@@ -1,0 +1,115 @@
+WHITESPACE = _{ " " | "\t" | "\n" }
+
+/////////////////////
+// TOKENS (LÉXICO)
+/////////////////////
+
+id = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+cte_ent = @{ ASCII_DIGIT+ }
+cte_flot = @{ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+
+TIPO = { "entero" | "flotante" }
+
+/////////////////////
+// PALABRAS RESERVADAS
+/////////////////////
+
+programa = { "programa" }
+vars = { "vars" }
+inicio = { "inicio" }
+fin = { "fin" }
+si = { "si" }
+sino = { "sino" }
+mientras = { "mientras" }
+haz = { "haz" }
+escribe = { "escribe" }
+
+/////////////////////
+// PROGRAMA
+/////////////////////
+
+program = {
+    SOI ~ programa ~ id ~ ";" ~ vars_block ~ funcs ~ inicio ~ cuerpo ~ fin ~ EOI
+}
+
+/////////////////////
+// VARIABLES
+/////////////////////
+
+vars_block = { (vars ~ ":" ~ lista_vars)? }
+
+lista_vars = {
+    (id ~ ":" ~ TIPO ~ ";")*
+}
+
+/////////////////////
+// FUNCIONES
+/////////////////////
+
+funcs = { (func)* }
+
+func = {
+    TIPO ~ id ~ "(" ~ ")" ~ "{" ~ cuerpo ~ "}"
+}
+
+/////////////////////
+// CUERPO
+/////////////////////
+
+cuerpo = { (estatuto)* }
+
+estatuto = {
+      asigna
+    | condicion
+    | ciclo
+    | imprime
+    | llamada
+}
+
+/////////////////////
+// ESTATUTOS
+/////////////////////
+
+asigna = { id ~ "=" ~ expresion ~ ";" }
+
+imprime = { escribe ~ "(" ~ expresion ~ ")" ~ ";" }
+
+condicion = {
+    si ~ "(" ~ expresion ~ ")" ~ cuerpo ~ sino ~ cuerpo
+}
+
+ciclo = {
+    mientras ~ "(" ~ expresion ~ ")" ~ haz ~ cuerpo
+}
+
+llamada = {
+    id ~ "(" ~ expresion ~ ")" ~ ";"
+}
+
+/////////////////////
+// EXPRESIONES
+/////////////////////
+
+expresion = {
+    exp ~ (op_rel ~ exp)?
+}
+
+op_rel = { ">" | "<" | "!=" | "==" }
+
+exp = {
+    termino ~ (("+" | "-") ~ termino)*
+}
+
+termino = {
+    factor ~ (("*" | "/") ~ factor)*
+}
+
+factor = {
+      "(" ~ expresion ~ ")"
+    | id
+    | cte
+}
+
+cte = { cte_flot | cte_ent }
+
+/////////////////////
