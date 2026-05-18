@@ -1,3 +1,5 @@
+mod semantic;
+use semantic::*;
 use pest::Parser;
 use pest_derive::Parser;
 
@@ -131,4 +133,94 @@ fin"#, true),
 
     println!("\n=========================");
     println!("Resumen: {}/{} casos correctos", passed, tests.len());
+
+
+        println!("\n=========================");
+    println!("PRUEBAS SEMÁNTICAS");
+    println!("=========================");
+
+    /////////////////////
+    // TABLA DE VARIABLES
+    /////////////////////
+
+    let mut tabla_global: TablaVariables = std::collections::HashMap::new();
+
+    agregar_variable(
+        &mut tabla_global,
+        "x".to_string(),
+        Tipo::Entero,
+    );
+
+    agregar_variable(
+        &mut tabla_global,
+        "y".to_string(),
+        Tipo::Flotante,
+    );
+
+    // Error esperado
+    agregar_variable(
+        &mut tabla_global,
+        "x".to_string(),
+        Tipo::Flotante,
+    );
+
+    println!("\nTabla de variables:");
+    println!("{:#?}", tabla_global);
+
+    /////////////////////
+    // DIRECTORIO FUNCIONES
+    /////////////////////
+
+    let mut directorio: DirectorioFunciones =
+        std::collections::HashMap::new();
+
+    agregar_funcion(
+        &mut directorio,
+        "suma".to_string(),
+        Tipo::Entero,
+    );
+
+    agregar_funcion(
+        &mut directorio,
+        "promedio".to_string(),
+        Tipo::Flotante,
+    );
+
+    // Error esperado
+    agregar_funcion(
+        &mut directorio,
+        "suma".to_string(),
+        Tipo::Entero,
+    );
+
+    println!("\nDirectorio de funciones:");
+    println!("{:#?}", directorio);
+
+    /////////////////////
+    // CUBO SEMÁNTICO
+    /////////////////////
+
+    let cubo = CuboSemantico::nuevo();
+
+    let resultado = cubo.validar(
+        Tipo::Entero,
+        "+",
+        Tipo::Flotante,
+    );
+
+    println!(
+        "\nResultado de Entero + Flotante: {:?}",
+        resultado
+    );
+
+    let resultado_error = cubo.validar(
+        Tipo::Bool,
+        "+",
+        Tipo::Entero,
+    );
+
+    println!(
+        "Resultado de Bool + Entero: {:?}",
+        resultado_error
+    );
 }
