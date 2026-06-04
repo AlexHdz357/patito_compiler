@@ -1,6 +1,13 @@
 use std::collections::HashMap;
 
 /////////////////////
+// RESULTADOS
+/////////////////////
+
+pub type SemanticResult<T> =
+    Result<T, String>;
+
+/////////////////////
 // TIPOS SEMÁNTICOS
 /////////////////////
 
@@ -9,35 +16,139 @@ pub enum Tipo {
     Entero,
     Flotante,
     Bool,
+    Void,
     Error,
 }
 
 /////////////////////
-// TABLA DE VARIABLES
+// VARIABLES
 /////////////////////
 
 #[derive(Debug, Clone)]
 pub struct VariableInfo {
     pub nombre: String,
     pub tipo: Tipo,
+
+    // Etapa 4
+    pub direccion: Option<usize>,
 }
 
 pub type TablaVariables =
     HashMap<String, VariableInfo>;
 
 /////////////////////
-// DIRECTORIO FUNCIONES
+// CONSTANTES
+/////////////////////
+
+#[derive(Debug, Clone)]
+pub struct ConstanteInfo {
+    pub valor: String,
+    pub tipo: Tipo,
+
+    // Etapa 4
+    pub direccion: Option<usize>,
+}
+
+pub type TablaConstantes =
+    HashMap<String, ConstanteInfo>;
+
+/////////////////////
+// FUNCIONES
 /////////////////////
 
 #[derive(Debug)]
 pub struct FuncionInfo {
     pub nombre: String,
+
     pub tipo_retorno: Tipo,
+
+    pub parametros: Vec<Tipo>,
+
     pub variables: TablaVariables,
+
+    // Etapa 4
+    pub inicio_cuadruplo: Option<usize>,
 }
 
 pub type DirectorioFunciones =
     HashMap<String, FuncionInfo>;
+
+/////////////////////
+// OPERADORES
+/////////////////////
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Operador {
+    Suma,
+    Resta,
+    Multiplicacion,
+    Division,
+
+    Mayor,
+    Menor,
+    MayorIgual,
+    MenorIgual,
+    IgualIgual,
+    Diferente,
+
+    Asignacion,
+
+    Print,
+
+    Goto,
+    GotoF,
+
+    Era,
+    Param,
+    Gosub,
+
+    Return,
+    EndFunc,
+}
+
+/////////////////////
+// CUÁDRUPLOS
+/////////////////////
+
+#[derive(Debug, Clone)]
+pub struct Cuadruplo {
+    pub operador: Operador,
+
+    pub izquierda: Option<String>,
+
+    pub derecha: Option<String>,
+
+    pub resultado: Option<String>,
+}
+
+/////////////////////
+// TEMPORALES
+/////////////////////
+
+pub struct GeneradorTemporales {
+    pub contador: usize,
+}
+
+impl GeneradorTemporales {
+
+    pub fn nuevo() -> Self {
+        Self {
+            contador: 0,
+        }
+    }
+
+    pub fn nuevo_temp(
+        &mut self,
+    ) -> String {
+
+        self.contador += 1;
+
+        format!(
+            "t{}",
+            self.contador
+        )
+    }
+}
 
 /////////////////////
 // CUBO SEMÁNTICO
@@ -47,8 +158,12 @@ type SemanticKey =
     (Tipo, String, Tipo);
 
 pub struct CuboSemantico {
+
     pub reglas:
-        HashMap<SemanticKey, Tipo>,
+        HashMap<
+            SemanticKey,
+            Tipo
+        >,
 }
 
 impl CuboSemantico {
@@ -59,124 +174,54 @@ impl CuboSemantico {
             HashMap::new();
 
         /////////////////////
-        // SUMA
+        // ARITMÉTICOS
         /////////////////////
 
-        reglas.insert(
-            (
-                Tipo::Entero,
-                "+".to_string(),
+        let aritmeticos =
+            vec![
+                "+",
+                "-",
+                "*",
+            ];
+
+        for op in aritmeticos {
+
+            reglas.insert(
+                (
+                    Tipo::Entero,
+                    op.to_string(),
+                    Tipo::Entero
+                ),
                 Tipo::Entero
-            ),
-            Tipo::Entero
-        );
+            );
 
-        reglas.insert(
-            (
-                Tipo::Entero,
-                "+".to_string(),
+            reglas.insert(
+                (
+                    Tipo::Entero,
+                    op.to_string(),
+                    Tipo::Flotante
+                ),
                 Tipo::Flotante
-            ),
-            Tipo::Flotante
-        );
+            );
 
-        reglas.insert(
-            (
-                Tipo::Flotante,
-                "+".to_string(),
-                Tipo::Entero
-            ),
-            Tipo::Flotante
-        );
-
-        reglas.insert(
-            (
-                Tipo::Flotante,
-                "+".to_string(),
+            reglas.insert(
+                (
+                    Tipo::Flotante,
+                    op.to_string(),
+                    Tipo::Entero
+                ),
                 Tipo::Flotante
-            ),
-            Tipo::Flotante
-        );
+            );
 
-        /////////////////////
-        // RESTA
-        /////////////////////
-
-        reglas.insert(
-            (
-                Tipo::Entero,
-                "-".to_string(),
-                Tipo::Entero
-            ),
-            Tipo::Entero
-        );
-
-        reglas.insert(
-            (
-                Tipo::Entero,
-                "-".to_string(),
+            reglas.insert(
+                (
+                    Tipo::Flotante,
+                    op.to_string(),
+                    Tipo::Flotante
+                ),
                 Tipo::Flotante
-            ),
-            Tipo::Flotante
-        );
-
-        reglas.insert(
-            (
-                Tipo::Flotante,
-                "-".to_string(),
-                Tipo::Entero
-            ),
-            Tipo::Flotante
-        );
-
-        reglas.insert(
-            (
-                Tipo::Flotante,
-                "-".to_string(),
-                Tipo::Flotante
-            ),
-            Tipo::Flotante
-        );
-
-        /////////////////////
-        // MULTIPLICACIÓN
-        /////////////////////
-
-        reglas.insert(
-            (
-                Tipo::Entero,
-                "*".to_string(),
-                Tipo::Entero
-            ),
-            Tipo::Entero
-        );
-
-        reglas.insert(
-            (
-                Tipo::Entero,
-                "*".to_string(),
-                Tipo::Flotante
-            ),
-            Tipo::Flotante
-        );
-
-        reglas.insert(
-            (
-                Tipo::Flotante,
-                "*".to_string(),
-                Tipo::Entero
-            ),
-            Tipo::Flotante
-        );
-
-        reglas.insert(
-            (
-                Tipo::Flotante,
-                "*".to_string(),
-                Tipo::Flotante
-            ),
-            Tipo::Flotante
-        );
+            );
+        }
 
         /////////////////////
         // DIVISIÓN
@@ -245,15 +290,6 @@ impl CuboSemantico {
 
             reglas.insert(
                 (
-                    Tipo::Flotante,
-                    op.to_string(),
-                    Tipo::Flotante
-                ),
-                Tipo::Bool
-            );
-
-            reglas.insert(
-                (
                     Tipo::Entero,
                     op.to_string(),
                     Tipo::Flotante
@@ -269,9 +305,49 @@ impl CuboSemantico {
                 ),
                 Tipo::Bool
             );
+
+            reglas.insert(
+                (
+                    Tipo::Flotante,
+                    op.to_string(),
+                    Tipo::Flotante
+                ),
+                Tipo::Bool
+            );
         }
 
-        CuboSemantico {
+        /////////////////////
+        // ASIGNACIÓN
+        /////////////////////
+
+        reglas.insert(
+            (
+                Tipo::Entero,
+                "=".to_string(),
+                Tipo::Entero
+            ),
+            Tipo::Entero
+        );
+
+        reglas.insert(
+            (
+                Tipo::Flotante,
+                "=".to_string(),
+                Tipo::Flotante
+            ),
+            Tipo::Flotante
+        );
+
+        reglas.insert(
+            (
+                Tipo::Flotante,
+                "=".to_string(),
+                Tipo::Entero
+            ),
+            Tipo::Flotante
+        );
+
+        Self {
             reglas
         }
     }
@@ -290,12 +366,14 @@ impl CuboSemantico {
                 derecha
             ))
             .cloned()
-            .unwrap_or(Tipo::Error)
+            .unwrap_or(
+                Tipo::Error
+            )
     }
 }
 
 /////////////////////
-// TABLA VARIABLES
+// VARIABLES
 /////////////////////
 
 pub fn agregar_variable(
@@ -304,8 +382,8 @@ pub fn agregar_variable(
     tipo: Tipo,
 ) {
 
-    if tabla.contains_key(&nombre) {
-
+    if tabla.contains_key(&nombre)
+    {
         println!(
             "Error: variable '{}' duplicada",
             nombre
@@ -319,22 +397,49 @@ pub fn agregar_variable(
         VariableInfo {
             nombre,
             tipo,
-        },
+            direccion: None,
+        }
     );
 }
 
+pub fn buscar_variable(
+    tabla: &TablaVariables,
+    nombre: &str,
+) -> SemanticResult<Tipo> {
+
+    match tabla.get(nombre) {
+
+        Some(v) =>
+            Ok(
+                v.tipo.clone()
+            ),
+
+        None =>
+            Err(
+                format!(
+                    "Variable '{}' no declarada",
+                    nombre
+                )
+            ),
+    }
+}
+
 /////////////////////
-// DIRECTORIO FUNCIONES
+// FUNCIONES
 /////////////////////
 
 pub fn agregar_funcion(
     directorio:
         &mut DirectorioFunciones,
+
     nombre: String,
+
     tipo_retorno: Tipo,
 ) {
 
-    if directorio.contains_key(&nombre) {
+    if directorio.contains_key(
+        &nombre
+    ) {
 
         println!(
             "Error: función '{}' duplicada",
@@ -346,71 +451,30 @@ pub fn agregar_funcion(
 
     directorio.insert(
         nombre.clone(),
+
         FuncionInfo {
+
             nombre,
+
             tipo_retorno,
+
+            parametros:
+                Vec::new(),
+
             variables:
                 HashMap::new(),
-        },
+
+            inicio_cuadruplo:
+                None,
+        }
     );
 }
 
 /////////////////////
-// CUÁDRUPLOS
-/////////////////////
-
-#[derive(Debug, Clone)]
-pub struct Cuadruplo {
-
-    pub operador: String,
-
-    pub izquierda: String,
-
-    pub derecha: String,
-
-    pub resultado: String,
-}
-
-/////////////////////
-// TEMPORALES
-/////////////////////
-
-pub struct GeneradorTemporales {
-
-    contador: usize,
-}
-
-impl GeneradorTemporales {
-
-    pub fn nuevo() -> Self {
-
-        Self {
-            contador: 0
-        }
-    }
-
-    pub fn nuevo_temp(
-        &mut self
-    ) -> String {
-
-        self.contador += 1;
-
-        format!(
-            "t{}",
-            self.contador
-        )
-    }
-}
-
-/////////////////////
-// GENERADOR CUÁDRUPLOS
+// GENERADOR
 /////////////////////
 
 pub struct GeneradorCuadruplos {
-
-    /////////////////////
-    // PILAS
-    /////////////////////
 
     pub operadores:
         Vec<String>,
@@ -421,16 +485,11 @@ pub struct GeneradorCuadruplos {
     pub tipos:
         Vec<Tipo>,
 
-    /////////////////////
-    // FILA
-    /////////////////////
+    pub saltos:
+        Vec<usize>,
 
     pub cuadruplos:
         Vec<Cuadruplo>,
-
-    /////////////////////
-    // TEMPORALES
-    /////////////////////
 
     pub temporales:
         GeneradorTemporales,
@@ -451,6 +510,9 @@ impl GeneradorCuadruplos {
             tipos:
                 Vec::new(),
 
+            saltos:
+                Vec::new(),
+
             cuadruplos:
                 Vec::new(),
 
@@ -458,10 +520,6 @@ impl GeneradorCuadruplos {
                 GeneradorTemporales::nuevo(),
         }
     }
-
-    /////////////////////
-    // PILAS
-    /////////////////////
 
     pub fn push_operando(
         &mut self,
@@ -485,15 +543,11 @@ impl GeneradorCuadruplos {
             .push(op);
     }
 
-    /////////////////////
-    // GENERAR OPERACIÓN
-    /////////////////////
-
     pub fn generar_operacion(
         &mut self,
         cubo:
             &CuboSemantico,
-    ) {
+    ) -> SemanticResult<()> {
 
         let derecha =
             self.operandos
@@ -530,8 +584,13 @@ impl GeneradorCuadruplos {
         if tipo_resultado
             == Tipo::Error
         {
-            panic!(
-                "Error semántico"
+            return Err(
+                format!(
+                    "Operación inválida: {:?} {} {:?}",
+                    tipo_izq,
+                    operador,
+                    tipo_der
+                )
             );
         }
 
@@ -542,31 +601,75 @@ impl GeneradorCuadruplos {
         self.cuadruplos.push(
             Cuadruplo {
 
-                operador,
+                operador:
+                    match operador.as_str()
+                    {
+                        "+" =>
+                            Operador::Suma,
 
-                izquierda,
+                        "-" =>
+                            Operador::Resta,
 
-                derecha,
+                        "*" =>
+                            Operador::Multiplicacion,
+
+                        "/" =>
+                            Operador::Division,
+
+                        ">" =>
+                            Operador::Mayor,
+
+                        "<" =>
+                            Operador::Menor,
+
+                        ">=" =>
+                            Operador::MayorIgual,
+
+                        "<=" =>
+                            Operador::MenorIgual,
+
+                        "==" =>
+                            Operador::IgualIgual,
+
+                        "!=" =>
+                            Operador::Diferente,
+
+                        _ =>
+                            return Err(
+                                format!(
+                                    "Operador desconocido {}",
+                                    operador
+                                )
+                            ),
+                    },
+
+                izquierda:
+                    Some(
+                        izquierda
+                    ),
+
+                derecha:
+                    Some(
+                        derecha
+                    ),
 
                 resultado:
-                    temporal.clone(),
-            },
+                    Some(
+                        temporal.clone()
+                    ),
+            }
         );
 
-        self.operandos
-            .push(
-                temporal.clone()
-            );
+        self.operandos.push(
+            temporal
+        );
 
-        self.tipos
-            .push(
-                tipo_resultado
-            );
+        self.tipos.push(
+            tipo_resultado
+        );
+
+        Ok(())
     }
-
-    /////////////////////
-    // ASIGNACIÓN
-    /////////////////////
 
     pub fn generar_asignacion(
         &mut self,
@@ -584,23 +687,19 @@ impl GeneradorCuadruplos {
             Cuadruplo {
 
                 operador:
-                    "=".to_string(),
+                    Operador::Asignacion,
 
                 izquierda:
-                    valor,
+                    Some(valor),
 
                 derecha:
-                    "-".to_string(),
+                    None,
 
                 resultado:
-                    variable,
-            },
+                    Some(variable),
+            }
         );
     }
-
-    /////////////////////
-    // PRINT
-    /////////////////////
 
     pub fn generar_print(
         &mut self,
@@ -617,18 +716,41 @@ impl GeneradorCuadruplos {
             Cuadruplo {
 
                 operador:
-                    "PRINT"
-                        .to_string(),
+                    Operador::Print,
 
                 izquierda:
-                    "-".to_string(),
+                    None,
 
                 derecha:
-                    "-".to_string(),
+                    None,
 
                 resultado:
-                    valor,
-            },
+                    Some(valor),
+            }
         );
+    }
+
+    pub fn siguiente_cuadruplo(
+        &self,
+    ) -> usize {
+
+        self.cuadruplos.len()
+    }
+
+    pub fn agregar_salto(
+        &mut self,
+        indice: usize,
+    ) {
+
+        self.saltos.push(
+            indice
+        );
+    }
+
+    pub fn sacar_salto(
+        &mut self,
+    ) -> Option<usize> {
+
+        self.saltos.pop()
     }
 }

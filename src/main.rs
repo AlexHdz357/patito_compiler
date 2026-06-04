@@ -1,273 +1,483 @@
 mod semantic;
-use semantic::*;
+
 use pest::Parser;
+use pest::iterators::Pair;
 use pest_derive::Parser;
+
+use semantic::*;
 
 #[derive(Parser)]
 #[grammar = "patito.pest"]
 struct PatitoParser;
 
-fn main() {
-    let tests = vec![
-        // =========================
-        // CASOS VÁLIDOS
-        // =========================
-        ("Válido 1: Programa mínimo", 
-        r#"programa a;
-inicio
-fin"#, true),
+fn obtener_tipo_variable(
+    nombre: &str,
+    tabla: &TablaVariables,
+) -> Tipo {
 
-        ("Válido 2: Declaración de variables", 
-        r#"programa a;
-vars:
-x: entero;
-inicio
-x = 10;
-fin"#, true),
+    match buscar_variable(
+        tabla,
+        nombre,
+    ) {
+        Ok(tipo) => tipo,
 
-        ("Válido 3: Expresión aritmética", 
-        r#"programa a;
-vars:
-x: entero;
-inicio
-x = 5 + 3;
-fin"#, true),
-
-        ("Válido 4: Impresión", 
-        r#"programa a;
-vars:
-x: entero;
-inicio
-x = 5;
-escribe(x);
-fin"#, true),
-
-        ("Válido 5: Expresión compleja", 
-        r#"programa a;
-vars:
-x: entero;
-inicio
-x = (5 + 3) * 2;
-fin"#, true),
-
-        // =========================
-        // CASOS INVÁLIDOS
-        // =========================
-        ("Error 1: Falta identificador", 
-        "programa ;", false),
-
-        ("Error 2: Falta palabra clave programa", 
-        "x = 5;", false),
-
-        ("Error 3: Expresión incompleta", 
-        r#"programa a;
-inicio
-x = ;
-fin"#, false),
-
-        ("Error 4: Falta punto y coma", 
-        r#"programa a;
-inicio
-x = 5
-fin"#, false),
-
-        ("Error 5: Paréntesis no balanceados", 
-        r#"programa a;
-inicio
-x = (5 + 3;
-fin"#, false),
-
-        // =========================
-        // CASOS LÍMITE
-        // =========================
-        ("Edge 1: Número grande", 
-        r#"programa a;
-vars:
-x: entero;
-inicio
-x = 999999999;
-fin"#, true),
-
-        ("Edge 2: Número flotante", 
-        r#"programa a;
-vars:
-x: flotante;
-inicio
-x = 1.2345;
-fin"#, true),
-
-        ("Edge 3: Expresión larga", 
-        r#"programa a;
-vars:
-x: entero;
-inicio
-x = 1 + 2 + 3 + 4 + 5;
-fin"#, true),
-    ];
-
-    let mut passed = 0;
-    for (name, input, should_pass) in &tests {
-        println!("\n--- {} ---", name);
-
-        let result = PatitoParser::parse(Rule::program, input);
-
-        match (result, *should_pass) {
-            (Ok(_), true) => {
-                println!("Correcto (aceptado)");
-                passed += 1;
-            }
-            (Err(e), false) => {
-                println!("Correcto (error detectado)");
-                println!("   {}", e);
-                passed += 1;
-            }
-            (Ok(_), false) => {
-                println!("Fallo: se esperaba error pero fue válido");
-            }
-            (Err(e), true) => {
-                println!("Fallo: se esperaba válido pero hubo error");
-                println!("   {}", e);
-            }
+        Err(msg) => {
+            panic!("{}", msg);
         }
     }
+}
 
-    println!("\n=========================");
-    println!("Resumen: {}/{} casos correctos", passed, tests.len());
+fn procesar_factor(
+    pair: Pair<Rule>,
+    tabla: &TablaVariables,
+    gen: &mut GeneradorCuadruplos,
+) {
 
+    let inner =
+        pair.into_inner()
+            .next()
+            .unwrap();
 
-        println!("\n=========================");
-    println!("PRUEBAS SEMÁNTICAS");
-    println!("=========================");
+    match inner.as_rule() {
 
-    /////////////////////
-    // TABLA DE VARIABLES
-    /////////////////////
+        Rule::id => {
 
-    let mut tabla_global: TablaVariables = std::collections::HashMap::new();
+            let nombre =
+                inner.as_str()
+                    .to_string();
 
-    agregar_variable(
-        &mut tabla_global,
-        "x".to_string(),
-        Tipo::Entero,
+            let tipo =
+                obtener_tipo_variable(
+                    &nombre,
+                    tabla,
+                );
+
+            gen.push_operando(
+                nombre,
+                tipo,
+            );
+        }
+
+        Rule::cte => {
+
+            let valor =
+                inner.as_str()
+                    .to_string();
+
+            if valor.contains(".")
+            {
+                gen.push_operando(
+                    valor,
+                    Tipo::Flotante,
+                );
+            }
+            else {
+
+                gen.push_operando(
+                    valor,
+                    Tipo::Entero,
+                );
+            }
+        }
+
+        Rule::expresion => {
+
+            procesar_expresion(
+                inner,
+                tabla,
+                gen,
+            );
+        }
+
+        _ => {}
+    }
+}
+
+fn procesar_termino(
+    pair: Pair<Rule>,
+    tabla: &TablaVariables,
+    gen: &mut GeneradorCuadruplos,
+    cubo: &CuboSemantico,
+) {
+
+    let mut inner =
+        pair.into_inner();
+
+    let primero =
+        inner.next().unwrap();
+
+    procesar_factor(
+        primero,
+        tabla,
+        gen,
     );
 
-    agregar_variable(
-        &mut tabla_global,
-        "y".to_string(),
-        Tipo::Flotante,
+    while let Some(op) =
+        inner.next()
+    {
+
+        let operador =
+            op.as_str()
+                .to_string();
+
+        let siguiente =
+            inner.next()
+                .unwrap();
+
+        procesar_factor(
+            siguiente,
+            tabla,
+            gen,
+        );
+
+        gen.push_operador(
+            operador,
+        );
+
+        gen.generar_operacion(
+            cubo,
+        ).unwrap();
+    }
+}
+
+fn procesar_exp(
+    pair: Pair<Rule>,
+    tabla: &TablaVariables,
+    gen: &mut GeneradorCuadruplos,
+    cubo: &CuboSemantico,
+) {
+
+    let mut inner =
+        pair.into_inner();
+
+    let primero =
+        inner.next().unwrap();
+
+    procesar_termino(
+        primero,
+        tabla,
+        gen,
+        cubo,
     );
 
-    // Error esperado
-    agregar_variable(
-        &mut tabla_global,
-        "x".to_string(),
-        Tipo::Flotante,
-    );
+    while let Some(op) =
+        inner.next()
+    {
 
-    println!("\nTabla de variables:");
-    println!("{:#?}", tabla_global);
+        let operador =
+            op.as_str()
+                .to_string();
 
-    /////////////////////
-    // DIRECTORIO FUNCIONES
-    /////////////////////
+        let siguiente =
+            inner.next()
+                .unwrap();
 
-    let mut directorio: DirectorioFunciones =
-        std::collections::HashMap::new();
+        procesar_termino(
+            siguiente,
+            tabla,
+            gen,
+            cubo,
+        );
 
-    agregar_funcion(
-        &mut directorio,
-        "suma".to_string(),
-        Tipo::Entero,
-    );
+        gen.push_operador(
+            operador,
+        );
 
-    agregar_funcion(
-        &mut directorio,
-        "promedio".to_string(),
-        Tipo::Flotante,
-    );
+        gen.generar_operacion(
+            cubo,
+        ).unwrap();
+    }
+}
 
-    // Error esperado
-    agregar_funcion(
-        &mut directorio,
-        "suma".to_string(),
-        Tipo::Entero,
-    );
-
-    println!("\nDirectorio de funciones:");
-    println!("{:#?}", directorio);
-
-    /////////////////////
-    // CUBO SEMÁNTICO
-    /////////////////////
-
-    let cubo = CuboSemantico::nuevo();
-
-    let resultado = cubo.validar(
-        Tipo::Entero,
-        "+",
-        Tipo::Flotante,
-    );
-
-    println!(
-        "\nResultado de Entero + Flotante: {:?}",
-        resultado
-    );
-
-    let resultado_error = cubo.validar(
-        Tipo::Bool,
-        "+",
-        Tipo::Entero,
-    );
-
-    println!(
-        "Resultado de Bool + Entero: {:?}",
-        resultado_error
-    );
-
-
-
-    println!("\n=================");
-    println!("CUÁDRUPLOS");
-    println!("=================");
+fn procesar_expresion(
+    pair: Pair<Rule>,
+    tabla: &TablaVariables,
+    gen: &mut GeneradorCuadruplos,
+) {
 
     let cubo =
         CuboSemantico::nuevo();
 
-    let mut gen =
-        GeneradorCuadruplos::nuevo();
+    let mut inner =
+        pair.into_inner();
 
-    gen.push_operando(
-        "5".to_string(),
-        Tipo::Entero,
+    let izquierda =
+        inner.next()
+            .unwrap();
+
+    procesar_exp(
+        izquierda,
+        tabla,
+        gen,
+        &cubo,
     );
 
-    gen.push_operando(
-        "3".to_string(),
-        Tipo::Entero,
-    );
+    if let Some(op_rel) =
+        inner.next()
+    {
 
-    gen.push_operador(
-        "+".to_string()
-    );
+        let operador =
+            op_rel.as_str()
+                .to_string();
 
-    gen.generar_operacion(
-        &cubo
+        let derecha =
+            inner.next()
+                .unwrap();
+
+        procesar_exp(
+            derecha,
+            tabla,
+            gen,
+            &cubo,
+        );
+
+        gen.push_operador(
+            operador,
+        );
+
+        gen.generar_operacion(
+            &cubo,
+        ).unwrap();
+    }
+}
+
+fn procesar_asignacion(
+    pair: Pair<Rule>,
+    tabla: &TablaVariables,
+    gen: &mut GeneradorCuadruplos,
+) {
+
+    let mut inner =
+        pair.into_inner();
+
+    let variable =
+        inner.next()
+            .unwrap()
+            .as_str()
+            .to_string();
+
+    let expresion =
+        inner.next()
+            .unwrap();
+
+    procesar_expresion(
+        expresion,
+        tabla,
+        gen,
     );
 
     gen.generar_asignacion(
-        "x".to_string()
+        variable,
+    );
+}
+
+fn procesar_print(
+    pair: Pair<Rule>,
+    tabla: &TablaVariables,
+    gen: &mut GeneradorCuadruplos,
+) {
+
+    let expresion =
+        pair.into_inner()
+            .next()
+            .unwrap();
+
+    procesar_expresion(
+        expresion,
+        tabla,
+        gen,
     );
 
-    for (i, cuad) in
-        gen.cuadruplos.iter().enumerate()
+    gen.generar_print();
+}
+
+fn procesar_cuerpo(
+    pair: Pair<Rule>,
+    tabla: &TablaVariables,
+    gen: &mut GeneradorCuadruplos,
+) {
+
+    for estatuto
+        in pair.into_inner()
     {
+
+        let inner =
+            estatuto
+                .into_inner()
+                .next()
+                .unwrap();
+
+        match inner.as_rule() {
+
+            Rule::asigna => {
+
+                procesar_asignacion(
+                    inner,
+                    tabla,
+                    gen,
+                );
+            }
+
+            Rule::imprime => {
+
+                procesar_print(
+                    inner,
+                    tabla,
+                    gen,
+                );
+            }
+
+            _ => {}
+        }
+    }
+}
+
+fn registrar_variables(
+    pair: Pair<Rule>,
+    tabla:
+        &mut TablaVariables,
+) {
+
+    for p in pair.into_inner()
+    {
+
+        if p.as_rule()
+            != Rule::lista_vars
+        {
+            continue;
+        }
+
+        let mut inner =
+            p.into_inner();
+
+        while let Some(id) =
+            inner.next()
+        {
+
+            let tipo =
+                inner.next()
+                    .unwrap();
+
+            let nombre =
+                id.as_str()
+                    .to_string();
+
+            let tipo_var =
+                match tipo.as_str()
+            {
+                "entero" =>
+                    Tipo::Entero,
+
+                "flotante" =>
+                    Tipo::Flotante,
+
+                _ =>
+                    Tipo::Error,
+            };
+
+            agregar_variable(
+                tabla,
+                nombre,
+                tipo_var,
+            );
+        }
+    }
+}
+
+fn main() {
+
+    let programa =
+r#"
+programa test;
+
+vars:
+x: entero;
+y: entero;
+z: flotante;
+
+inicio
+
+x = 5 + 3;
+
+y = x * 2;
+
+escribe(y);
+
+fin
+"#;
+
+    let parse =
+        PatitoParser::parse(
+            Rule::program,
+            programa,
+        )
+        .expect(
+            "Error de sintaxis"
+        );
+
+    let mut tabla:
+        TablaVariables =
+        std::collections::HashMap::new();
+
+    let mut gen =
+        GeneradorCuadruplos::nuevo();
+
+    let program =
+        parse.into_iter()
+            .next()
+            .unwrap();
+
+    for nodo
+        in program.into_inner()
+    {
+
+        match nodo.as_rule()
+        {
+
+            Rule::vars_block => {
+
+                registrar_variables(
+                    nodo,
+                    &mut tabla,
+                );
+            }
+
+            Rule::cuerpo => {
+
+                procesar_cuerpo(
+                    nodo,
+                    &tabla,
+                    &mut gen,
+                );
+            }
+
+            _ => {}
+        }
+    }
+
+    println!(
+        "\n=== VARIABLES ==="
+    );
+
+    println!(
+        "{:#?}",
+        tabla
+    );
+
+    println!(
+        "\n=== CUADRUPLOS ==="
+    );
+
+    for (i, c)
+        in gen.cuadruplos
+            .iter()
+            .enumerate()
+    {
+
         println!(
-            "{}: ({}, {}, {}, {})",
+            "{} -> {:?}",
             i,
-            cuad.operador,
-            cuad.izquierda,
-            cuad.derecha,
-            cuad.resultado
+            c
         );
     }
 }
