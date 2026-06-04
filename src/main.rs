@@ -223,4 +223,51 @@ fin"#, true),
         "Resultado de Bool + Entero: {:?}",
         resultado_error
     );
+
+
+
+    println!("\n=================");
+    println!("CUÁDRUPLOS");
+    println!("=================");
+
+    let cubo =
+        CuboSemantico::nuevo();
+
+    let mut gen =
+        GeneradorCuadruplos::nuevo();
+
+    gen.push_operando(
+        "5".to_string(),
+        Tipo::Entero,
+    );
+
+    gen.push_operando(
+        "3".to_string(),
+        Tipo::Entero,
+    );
+
+    gen.push_operador(
+        "+".to_string()
+    );
+
+    gen.generar_operacion(
+        &cubo
+    );
+
+    gen.generar_asignacion(
+        "x".to_string()
+    );
+
+    for (i, cuad) in
+        gen.cuadruplos.iter().enumerate()
+    {
+        println!(
+            "{}: ({}, {}, {}, {})",
+            i,
+            cuad.operador,
+            cuad.izquierda,
+            cuad.derecha,
+            cuad.resultado
+        );
+    }
 }

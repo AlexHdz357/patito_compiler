@@ -1,14 +1,21 @@
 WHITESPACE = _{ " " | "\t" | "\n" }
 
 /////////////////////
-// TOKENS (LÉXICO)
+// TOKENS
 /////////////////////
 
 id = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
-cte_ent = @{ ASCII_DIGIT+ }
-cte_flot = @{ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
 
-TIPO = { "entero" | "flotante" }
+cte_ent = @{ ASCII_DIGIT+ }
+
+cte_flot = @{
+    ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+
+}
+
+TIPO = {
+    "entero"
+    | "flotante"
+}
 
 /////////////////////
 // PALABRAS RESERVADAS
@@ -18,25 +25,41 @@ programa = { "programa" }
 vars = { "vars" }
 inicio = { "inicio" }
 fin = { "fin" }
+
 si = { "si" }
 sino = { "sino" }
+
 mientras = { "mientras" }
 haz = { "haz" }
+
 escribe = { "escribe" }
+
+regresa = { "return" }
 
 /////////////////////
 // PROGRAMA
 /////////////////////
 
 program = {
-    SOI ~ programa ~ id ~ ";" ~ vars_block ~ funcs ~ inicio ~ cuerpo ~ fin ~ EOI
+    SOI
+    ~ programa
+    ~ id
+    ~ ";"
+    ~ vars_block
+    ~ funcs
+    ~ inicio
+    ~ cuerpo
+    ~ fin
+    ~ EOI
 }
 
 /////////////////////
 // VARIABLES
 /////////////////////
 
-vars_block = { (vars ~ ":" ~ lista_vars)? }
+vars_block = {
+    (vars ~ ":" ~ lista_vars)?
+}
 
 lista_vars = {
     (id ~ ":" ~ TIPO ~ ";")*
@@ -46,17 +69,27 @@ lista_vars = {
 // FUNCIONES
 /////////////////////
 
-funcs = { (func)* }
+funcs = {
+    (func)*
+}
 
 func = {
-    TIPO ~ id ~ "(" ~ ")" ~ "{" ~ cuerpo ~ "}"
+    TIPO
+    ~ id
+    ~ "("
+    ~ ")"
+    ~ "{"
+    ~ cuerpo
+    ~ "}"
 }
 
 /////////////////////
 // CUERPO
 /////////////////////
 
-cuerpo = { (estatuto)* }
+cuerpo = {
+    (estatuto)*
+}
 
 estatuto = {
       asigna
@@ -64,26 +97,49 @@ estatuto = {
     | ciclo
     | imprime
     | llamada
+    | retorno
 }
 
 /////////////////////
 // ESTATUTOS
 /////////////////////
 
-asigna = { id ~ "=" ~ expresion ~ ";" }
+asigna = {
+    id ~ "=" ~ expresion ~ ";"
+}
 
-imprime = { escribe ~ "(" ~ expresion ~ ")" ~ ";" }
+imprime = {
+    escribe ~ "(" ~ expresion ~ ")" ~ ";"
+}
+
+retorno = {
+    regresa ~ expresion ~ ";"
+}
 
 condicion = {
-    si ~ "(" ~ expresion ~ ")" ~ cuerpo ~ sino ~ cuerpo
+    si
+    ~ "("
+    ~ expresion
+    ~ ")"
+    ~ cuerpo
+    ~ (sino ~ cuerpo)?
 }
 
 ciclo = {
-    mientras ~ "(" ~ expresion ~ ")" ~ haz ~ cuerpo
+    mientras
+    ~ "("
+    ~ expresion
+    ~ ")"
+    ~ haz
+    ~ cuerpo
 }
 
 llamada = {
-    id ~ "(" ~ expresion ~ ")" ~ ";"
+    id
+    ~ "("
+    ~ expresion?
+    ~ ")"
+    ~ ";"
 }
 
 /////////////////////
@@ -91,17 +147,27 @@ llamada = {
 /////////////////////
 
 expresion = {
-    exp ~ (op_rel ~ exp)?
+    exp
+    ~ (op_rel ~ exp)?
 }
 
-op_rel = { ">" | "<" | "!=" | "==" }
+op_rel = {
+      ">"
+    | "<"
+    | "=="
+    | "!="
+    | ">="
+    | "<="
+}
 
 exp = {
-    termino ~ (("+" | "-") ~ termino)*
+    termino
+    ~ (("+" | "-") ~ termino)*
 }
 
 termino = {
-    factor ~ (("*" | "/") ~ factor)*
+    factor
+    ~ (("*" | "/") ~ factor)*
 }
 
 factor = {
@@ -110,6 +176,7 @@ factor = {
     | cte
 }
 
-cte = { cte_flot | cte_ent }
-
-/////////////////////
+cte = {
+    cte_flot
+    | cte_ent
+}
