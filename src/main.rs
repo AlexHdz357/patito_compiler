@@ -30,7 +30,7 @@ fn obtener_tipo_variable(
 fn procesar_factor(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
-    gen: &mut GeneradorCuadruplos,
+    generador: &mut GeneradorCuadruplos,
 ) {
 
     let inner =
@@ -52,7 +52,7 @@ fn procesar_factor(
                     tabla,
                 );
 
-            gen.push_operando(
+            generador.push_operando(
                 nombre,
                 tipo,
             );
@@ -66,14 +66,14 @@ fn procesar_factor(
 
             if valor.contains(".")
             {
-                gen.push_operando(
+                generador.push_operando(
                     valor,
                     Tipo::Flotante,
                 );
             }
             else {
 
-                gen.push_operando(
+                generador.push_operando(
                     valor,
                     Tipo::Entero,
                 );
@@ -85,7 +85,7 @@ fn procesar_factor(
             procesar_expresion(
                 inner,
                 tabla,
-                gen,
+                generador,
             );
         }
 
@@ -96,7 +96,7 @@ fn procesar_factor(
 fn procesar_termino(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
-    gen: &mut GeneradorCuadruplos,
+    generador: &mut GeneradorCuadruplos,
     cubo: &CuboSemantico,
 ) {
 
@@ -109,7 +109,7 @@ fn procesar_termino(
     procesar_factor(
         primero,
         tabla,
-        gen,
+        generador,
     );
 
 
@@ -126,14 +126,14 @@ fn procesar_termino(
         procesar_factor(
             siguiente,
             tabla,
-            gen,
+            generador,
         );
 
-        gen.push_operador(
+        generador.push_operador(
             operador,
         );
 
-        gen.generar_operacion(
+        generador.generar_operacion(
             cubo,
         ).unwrap();
     }
@@ -142,7 +142,7 @@ fn procesar_termino(
 fn procesar_exp(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
-    gen: &mut GeneradorCuadruplos,
+    generador: &mut GeneradorCuadruplos,
     cubo: &CuboSemantico,
 ) {
 
@@ -155,7 +155,7 @@ fn procesar_exp(
     procesar_termino(
         primero,
         tabla,
-        gen,
+        generador,
         cubo,
     );
 
@@ -174,15 +174,15 @@ fn procesar_exp(
         procesar_termino(
             siguiente,
             tabla,
-            gen,
+            generador,
             cubo,
         );
 
-        gen.push_operador(
+        generador.push_operador(
             operador,
         );
 
-        gen.generar_operacion(
+        generador.generar_operacion(
             cubo,
         ).unwrap();
     }
@@ -191,7 +191,7 @@ fn procesar_exp(
 fn procesar_expresion(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
-    gen: &mut GeneradorCuadruplos,
+    generador: &mut GeneradorCuadruplos,
 ) {
 
     let cubo =
@@ -207,7 +207,7 @@ fn procesar_expresion(
     procesar_exp(
         izquierda,
         tabla,
-        gen,
+        generador,
         &cubo,
     );
 
@@ -226,15 +226,15 @@ fn procesar_expresion(
         procesar_exp(
             derecha,
             tabla,
-            gen,
+            generador,
             &cubo,
         );
 
-        gen.push_operador(
+        generador.push_operador(
             operador,
         );
 
-        gen.generar_operacion(
+        generador.generar_operacion(
             &cubo,
         ).unwrap();
     }
@@ -243,7 +243,7 @@ fn procesar_expresion(
 fn procesar_asignacion(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
-    gen: &mut GeneradorCuadruplos,
+    generador: &mut GeneradorCuadruplos,
 ) {
 
     let cubo =
@@ -271,39 +271,41 @@ fn procesar_asignacion(
     procesar_expresion(
         expresion,
         tabla,
-        gen,
+        generador,
     );
 
-    gen.generar_asignacion(
+    generador.generar_asignacion(
         variable,
         tipo_variable,
         &cubo,
     ).unwrap();
 }
+
+
 fn procesar_print(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
-    gen: &mut GeneradorCuadruplos,
+    generador: &mut GeneradorCuadruplos,
 ) {
+    for nodo in pair.into_inner() {
+        if nodo.as_rule() == Rule::expresion {
+            procesar_expresion(
+                nodo,
+                tabla,
+                generador,
+            );
 
-    let expresion =
-        pair.into_inner()
-            .next()
-            .unwrap();
+            generador.generar_print();
+            return;
+        }
+    }
 
-    procesar_expresion(
-        expresion,
-        tabla,
-        gen,
-    );
-
-    gen.generar_print();
+    panic!("Error: no se encontró expresión en escribe()");
 }
-
 fn procesar_cuerpo(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
-    gen: &mut GeneradorCuadruplos,
+    generador: &mut GeneradorCuadruplos,
 ) {
 
     for estatuto
@@ -323,7 +325,7 @@ fn procesar_cuerpo(
                 procesar_asignacion(
                     inner,
                     tabla,
-                    gen,
+                    generador,
                 );
             }
 
@@ -332,7 +334,7 @@ fn procesar_cuerpo(
                 procesar_print(
                     inner,
                     tabla,
-                    gen,
+                    generador,
                 );
             }
 
@@ -428,7 +430,7 @@ fin
         TablaVariables =
         std::collections::HashMap::new();
 
-    let mut gen =
+    let mut generador =
         GeneradorCuadruplos::nuevo();
 
     let program =
@@ -456,7 +458,7 @@ fin
                 procesar_cuerpo(
                     nodo,
                     &tabla,
-                    &mut gen,
+                    &mut generador,
                 );
             }
 
@@ -478,7 +480,7 @@ fin
     );
 
     for (i, c)
-        in gen.cuadruplos
+        in generador.cuadruplos
             .iter()
             .enumerate()
     {
