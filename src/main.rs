@@ -3,12 +3,18 @@ mod semantic;
 use pest::Parser;
 use pest::iterators::Pair;
 use pest_derive::Parser;
-
 use semantic::*;
+use std::collections::HashMap;
 
 #[derive(Parser)]
 #[grammar = "patito.pest"]
 struct PatitoParser;
+
+#[derive(Debug, Clone)]
+struct FuncionMeta {
+    inicio: usize,
+    parametros: Vec<String>,
+}
 
 fn obtener_variable(nombre: &str, tabla: &TablaVariables) -> (Tipo, String) {
     match buscar_variable_info(tabla, nombre) {
@@ -43,7 +49,6 @@ fn procesar_factor(
             };
 
             let direccion = registrar_constante(constantes, valor, tipo.clone(), direcciones);
-
             generador.push_operando(direccion.to_string(), tipo);
         }
 
@@ -64,7 +69,6 @@ fn procesar_termino(
     cubo: &CuboSemantico,
 ) {
     let mut inner = pair.into_inner();
-
     let primero = inner.next().unwrap();
 
     procesar_factor(primero, tabla, constantes, direcciones, generador);
@@ -76,7 +80,6 @@ fn procesar_termino(
         procesar_factor(siguiente, tabla, constantes, direcciones, generador);
 
         generador.push_operador(operador);
-
         generador.generar_operacion(cubo, direcciones).unwrap();
     }
 }
@@ -90,7 +93,6 @@ fn procesar_exp(
     cubo: &CuboSemantico,
 ) {
     let mut inner = pair.into_inner();
-
     let primero = inner.next().unwrap();
 
     procesar_termino(primero, tabla, constantes, direcciones, generador, cubo);
@@ -102,7 +104,6 @@ fn procesar_exp(
         procesar_termino(siguiente, tabla, constantes, direcciones, generador, cubo);
 
         generador.push_operador(operador);
-
         generador.generar_operacion(cubo, direcciones).unwrap();
     }
 }
@@ -117,7 +118,6 @@ fn procesar_expresion(
     let cubo = CuboSemantico::nuevo();
 
     let mut inner = pair.into_inner();
-
     let izquierda = inner.next().unwrap();
 
     procesar_exp(izquierda, tabla, constantes, direcciones, generador, &cubo);
@@ -129,7 +129,6 @@ fn procesar_expresion(
         procesar_exp(derecha, tabla, constantes, direcciones, generador, &cubo);
 
         generador.push_operador(operador);
-
         generador.generar_operacion(&cubo, direcciones).unwrap();
     }
 }
@@ -147,6 +146,7 @@ fn procesar_asignacion(
 
     let variable = inner.next().unwrap().as_str().to_string();
     let (tipo_variable, direccion_variable) = obtener_variable(&variable, tabla);
+
     let expresion = inner.next().unwrap();
 
     procesar_expresion(expresion, tabla, constantes, direcciones, generador);
@@ -166,7 +166,6 @@ fn procesar_print(
     for nodo in pair.into_inner() {
         if nodo.as_rule() == Rule::expresion {
             procesar_expresion(nodo, tabla, constantes, direcciones, generador);
-
             generador.generar_print();
             return;
         }
@@ -185,7 +184,6 @@ fn procesar_retorno(
     for nodo in pair.into_inner() {
         if nodo.as_rule() == Rule::expresion {
             procesar_expresion(nodo, tabla, constantes, direcciones, generador);
-
             generador.generar_return();
             return;
         }
@@ -200,14 +198,20 @@ fn procesar_llamada(
     constantes: &mut TablaConstantes,
     direcciones: &mut AdministradorDirecciones,
     generador: &mut GeneradorCuadruplos,
+    inicios_funciones: &HashMap<String, FuncionMeta>,
 ) {
     let mut inner = pair.into_inner();
 
     let nombre_funcion = inner.next().unwrap().as_str().to_string();
 
+    let meta = inicios_funciones
+        .get(&nombre_funcion)
+        .unwrap_or_else(|| panic!("Función '{}' no declarada", nombre_funcion))
+        .clone();
+
     generador.generar_era(nombre_funcion.clone());
 
-    let mut contador_param = 1;
+    let mut contador_param = 0;
 
     for nodo in inner {
         if nodo.as_rule() == Rule::argumentos {
@@ -215,22 +219,31 @@ fn procesar_llamada(
                 if arg.as_rule() == Rule::expresion {
                     procesar_expresion(arg, tabla, constantes, direcciones, generador);
 
-                    generador.generar_param(contador_param);
+                    let destino_param = meta
+                        .parametros
+                        .get(contador_param)
+                        .unwrap_or_else(|| {
+                            panic!("Demasiados argumentos para función '{}'", nombre_funcion)
+                        })
+                        .clone();
+
+                    generador.generar_param(destino_param);
+
                     contador_param += 1;
                 }
             }
         }
     }
 
-    generador.generar_gosub(nombre_funcion, 0);
+    generador.generar_gosub(nombre_funcion, meta.inicio);
 }
-
 fn procesar_condicion(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
     constantes: &mut TablaConstantes,
     direcciones: &mut AdministradorDirecciones,
     generador: &mut GeneradorCuadruplos,
+    inicios_funciones: &HashMap<String, FuncionMeta>,
 ) {
     let mut expresion_condicion: Option<Pair<Rule>> = None;
     let mut cuerpos: Vec<Pair<Rule>> = Vec::new();
@@ -253,7 +266,14 @@ fn procesar_condicion(
 
     let salto_falso = generador.generar_gotof().unwrap();
 
-    procesar_cuerpo(cuerpos.remove(0), tabla, constantes, direcciones, generador);
+    procesar_cuerpo(
+        cuerpos.remove(0),
+        tabla,
+        constantes,
+        direcciones,
+        generador,
+        inicios_funciones,
+    );
 
     if !cuerpos.is_empty() {
         let salto_fin = generador.generar_goto(0);
@@ -261,10 +281,16 @@ fn procesar_condicion(
 
         generador.rellenar_salto(salto_falso, inicio_sino);
 
-        procesar_cuerpo(cuerpos.remove(0), tabla, constantes, direcciones, generador);
+        procesar_cuerpo(
+            cuerpos.remove(0),
+            tabla,
+            constantes,
+            direcciones,
+            generador,
+            inicios_funciones,
+        );
 
         let fin = generador.siguiente_cuadruplo();
-
         generador.rellenar_salto(salto_fin, fin);
     } else {
         let fin = generador.siguiente_cuadruplo();
@@ -278,6 +304,7 @@ fn procesar_ciclo(
     constantes: &mut TablaConstantes,
     direcciones: &mut AdministradorDirecciones,
     generador: &mut GeneradorCuadruplos,
+    inicios_funciones: &HashMap<String, FuncionMeta>,
 ) {
     let inicio_ciclo = generador.siguiente_cuadruplo();
 
@@ -308,12 +335,12 @@ fn procesar_ciclo(
         constantes,
         direcciones,
         generador,
+        inicios_funciones,
     );
 
     generador.generar_goto(inicio_ciclo);
 
     let fin = generador.siguiente_cuadruplo();
-
     generador.rellenar_salto(salto_falso, fin);
 }
 
@@ -323,6 +350,7 @@ fn procesar_cuerpo(
     constantes: &mut TablaConstantes,
     direcciones: &mut AdministradorDirecciones,
     generador: &mut GeneradorCuadruplos,
+    inicios_funciones: &HashMap<String, FuncionMeta>,
 ) {
     for estatuto in pair.into_inner() {
         let inner = estatuto.into_inner().next().unwrap();
@@ -337,11 +365,25 @@ fn procesar_cuerpo(
             }
 
             Rule::condicion => {
-                procesar_condicion(inner, tabla, constantes, direcciones, generador);
+                procesar_condicion(
+                    inner,
+                    tabla,
+                    constantes,
+                    direcciones,
+                    generador,
+                    inicios_funciones,
+                );
             }
 
             Rule::ciclo => {
-                procesar_ciclo(inner, tabla, constantes, direcciones, generador);
+                procesar_ciclo(
+                    inner,
+                    tabla,
+                    constantes,
+                    direcciones,
+                    generador,
+                    inicios_funciones,
+                );
             }
 
             Rule::retorno => {
@@ -349,7 +391,14 @@ fn procesar_cuerpo(
             }
 
             Rule::llamada => {
-                procesar_llamada(inner, tabla, constantes, direcciones, generador);
+                procesar_llamada(
+                    inner,
+                    tabla,
+                    constantes,
+                    direcciones,
+                    generador,
+                    inicios_funciones,
+                );
             }
 
             _ => {}
@@ -385,22 +434,69 @@ fn registrar_variables(
     }
 }
 
+fn obtener_nombre_funcion(pair: Pair<Rule>) -> String {
+    for nodo in pair.into_inner() {
+        if nodo.as_rule() == Rule::id {
+            return nodo.as_str().to_string();
+        }
+    }
+
+    panic!("Función sin nombre");
+}
+
 fn procesar_funcion(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
     constantes: &mut TablaConstantes,
     direcciones: &mut AdministradorDirecciones,
     generador: &mut GeneradorCuadruplos,
+    inicios_funciones: &mut HashMap<String, FuncionMeta>,
 ) {
     let inicio_funcion = generador.siguiente_cuadruplo();
 
     let mut nombre_funcion = String::new();
+
     let mut cuerpo_funcion: Option<Pair<Rule>> = None;
+
+    let mut parametros_funcion: Vec<String> = Vec::new();
+
+    let mut tabla_local = tabla.clone();
 
     for nodo in pair.into_inner() {
         match nodo.as_rule() {
             Rule::id => {
-                nombre_funcion = nodo.as_str().to_string();
+                if nombre_funcion.is_empty() {
+                    nombre_funcion = nodo.as_str().to_string();
+                }
+            }
+
+            Rule::parametros => {
+                let mut inner = nodo.into_inner();
+
+                while let Some(param_id) = inner.next() {
+                    let tipo_nodo = inner.next().unwrap();
+
+                    let nombre_param = param_id.as_str().to_string();
+
+                    let tipo_param = match tipo_nodo.as_str() {
+                        "entero" => Tipo::Entero,
+                        "flotante" => Tipo::Flotante,
+                        _ => Tipo::Error,
+                    };
+
+                    let direccion = direcciones.nueva_local(&tipo_param);
+
+                    tabla_local.insert(
+                        nombre_param.clone(),
+                        VariableInfo {
+                            nombre: nombre_param,
+                            tipo: tipo_param,
+                            direccion: Some(direccion),
+                        },
+                    );
+
+                    parametros_funcion.push(direccion.to_string());
+                }
             }
 
             Rule::cuerpo => {
@@ -411,18 +507,32 @@ fn procesar_funcion(
         }
     }
 
+    inicios_funciones.insert(
+        nombre_funcion.clone(),
+        FuncionMeta {
+            inicio: inicio_funcion,
+            parametros: parametros_funcion,
+        },
+    );
+
     println!(
         "Función '{}' inicia en cuádruplo {}",
         nombre_funcion, inicio_funcion
     );
 
     if let Some(cuerpo) = cuerpo_funcion {
-        procesar_cuerpo(cuerpo, tabla, constantes, direcciones, generador);
+        procesar_cuerpo(
+            cuerpo,
+            &tabla_local,
+            constantes,
+            direcciones,
+            generador,
+            inicios_funciones,
+        );
     }
 
     generador.generar_endfunc();
 }
-
 fn main() {
     let programa = r#"
 programa test;
@@ -432,7 +542,9 @@ x: entero;
 y: entero;
 
 entero suma(a: entero, b: entero) {
-    return x + y;
+    escribe(a);
+    escribe(b);
+    return a + b;
 }
 
 inicio
@@ -448,46 +560,78 @@ fin
     let parse = PatitoParser::parse(Rule::program, programa).expect("Error de sintaxis");
 
     let mut tabla: TablaVariables = std::collections::HashMap::new();
-
     let mut constantes: TablaConstantes = std::collections::HashMap::new();
-
     let mut direcciones = AdministradorDirecciones::nuevo();
-
     let mut generador = GeneradorCuadruplos::nuevo();
 
+    let mut inicios_funciones: HashMap<String, FuncionMeta> = HashMap::new();
+
     let program = parse.into_iter().next().unwrap();
+    let nodos: Vec<Pair<Rule>> = program.into_inner().collect();
 
-    for nodo in program.into_inner() {
-        match nodo.as_rule() {
-            Rule::vars_block => {
-                registrar_variables(nodo, &mut tabla, &mut direcciones);
-            }
+    let salto_main = generador.generar_goto(0);
 
-            Rule::funcs => {
-                for funcion in nodo.into_inner() {
-                    if funcion.as_rule() == Rule::func {
-                        procesar_funcion(
-                            funcion,
-                            &tabla,
-                            &mut constantes,
-                            &mut direcciones,
-                            &mut generador,
-                        );
-                    }
+    // Primera pasada: registrar variables globales
+    for nodo in nodos.clone() {
+        if nodo.as_rule() == Rule::vars_block {
+            registrar_variables(nodo, &mut tabla, &mut direcciones);
+        }
+    }
+
+    // Segunda pasada: registrar inicio de funciones
+    for nodo in nodos.clone() {
+        if nodo.as_rule() == Rule::funcs {
+            for funcion in nodo.into_inner() {
+                if funcion.as_rule() == Rule::func {
+                    let inicio = generador.siguiente_cuadruplo();
+                    let nombre_funcion = obtener_nombre_funcion(funcion.clone());
+
+                    inicios_funciones.insert(
+                        nombre_funcion,
+                        FuncionMeta {
+                            inicio,
+                            parametros: Vec::new(),
+                        },
+                    );
                 }
             }
+        }
+    }
 
-            Rule::cuerpo => {
-                procesar_cuerpo(
-                    nodo,
-                    &tabla,
-                    &mut constantes,
-                    &mut direcciones,
-                    &mut generador,
-                );
+    // Tercera pasada: generar funciones
+    for nodo in nodos.clone() {
+        if nodo.as_rule() == Rule::funcs {
+            for funcion in nodo.into_inner() {
+                if funcion.as_rule() == Rule::func {
+                    procesar_funcion(
+                        funcion,
+                        &tabla,
+                        &mut constantes,
+                        &mut direcciones,
+                        &mut generador,
+                        &mut inicios_funciones,
+                    );
+                }
             }
+        }
+    }
 
-            _ => {}
+    // Parchear salto inicial hacia main
+    let inicio_main = generador.siguiente_cuadruplo();
+
+    generador.rellenar_salto(salto_main, inicio_main);
+
+    // Cuarta pasada: generar main
+    for nodo in nodos {
+        if nodo.as_rule() == Rule::cuerpo {
+            procesar_cuerpo(
+                nodo,
+                &tabla,
+                &mut constantes,
+                &mut direcciones,
+                &mut generador,
+                &inicios_funciones,
+            );
         }
     }
 
@@ -497,9 +641,18 @@ fin
     println!("\n=== CONSTANTES ===");
     println!("{:#?}", constantes);
 
+    println!("\n=== INICIOS FUNCIONES ===");
+    println!("{:#?}", inicios_funciones);
+
     println!("\n=== CUADRUPLOS ===");
 
     for (i, c) in generador.cuadruplos.iter().enumerate() {
         println!("{} -> {:?}", i, c);
     }
+
+    println!("\n=== EJECUCIÓN MÁQUINA VIRTUAL ===");
+
+    let mut vm = MaquinaVirtual::nueva(generador.cuadruplos.clone(), &constantes);
+
+    vm.ejecutar();
 }

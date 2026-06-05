@@ -58,6 +58,9 @@ pub struct AdministradorDirecciones {
     pub global_entero: usize,
     pub global_flotante: usize,
 
+    pub local_entero: usize,
+    pub local_flotante: usize,
+
     pub temporal_entero: usize,
     pub temporal_flotante: usize,
     pub temporal_bool: usize,
@@ -71,6 +74,9 @@ impl AdministradorDirecciones {
         Self {
             global_entero: 1000,
             global_flotante: 2000,
+
+            local_entero: 3000,
+            local_flotante: 4000,
 
             temporal_entero: 5000,
             temporal_flotante: 6000,
@@ -96,6 +102,24 @@ impl AdministradorDirecciones {
             }
 
             _ => panic!("Tipo global no soportado"),
+        }
+    }
+
+    pub fn nueva_local(&mut self, tipo: &Tipo) -> usize {
+        match tipo {
+            Tipo::Entero => {
+                let dir = self.local_entero;
+                self.local_entero += 1;
+                dir
+            }
+
+            Tipo::Flotante => {
+                let dir = self.local_flotante;
+                self.local_flotante += 1;
+                dir
+            }
+
+            _ => panic!("Tipo local no soportado"),
         }
     }
 
@@ -617,11 +641,17 @@ impl GeneradorCuadruplos {
     pub fn generar_goto(&mut self, destino: usize) -> usize {
         let indice = self.cuadruplos.len();
 
+        let resultado = if destino == 0 {
+            None
+        } else {
+            Some(destino.to_string())
+        };
+
         self.cuadruplos.push(Cuadruplo {
             operador: Operador::Goto,
             izquierda: None,
             derecha: None,
-            resultado: Some(destino.to_string()),
+            resultado,
         });
 
         indice
@@ -640,7 +670,7 @@ impl GeneradorCuadruplos {
         });
     }
 
-    pub fn generar_param(&mut self, numero_parametro: usize) {
+    pub fn generar_param(&mut self, direccion_parametro: String) {
         let valor = self.operandos.pop().unwrap();
 
         self.tipos.pop();
@@ -649,10 +679,9 @@ impl GeneradorCuadruplos {
             operador: Operador::Param,
             izquierda: Some(valor),
             derecha: None,
-            resultado: Some(numero_parametro.to_string()),
+            resultado: Some(direccion_parametro),
         });
     }
-
     pub fn generar_gosub(&mut self, nombre_funcion: String, inicio: usize) {
         self.cuadruplos.push(Cuadruplo {
             operador: Operador::Gosub,
@@ -682,5 +711,300 @@ impl GeneradorCuadruplos {
             derecha: None,
             resultado: None,
         });
+    }
+}
+
+/////////////////////
+// MÁQUINA VIRTUAL
+/////////////////////
+
+#[derive(Debug, Clone)]
+pub enum Valor {
+    Entero(i64),
+    Flotante(f64),
+    Bool(bool),
+    Vacio,
+}
+
+pub struct MaquinaVirtual {
+    pub cuadruplos: Vec<Cuadruplo>,
+    pub memoria: HashMap<usize, Valor>,
+    pub ip: usize,
+    pub pila_retorno: Vec<usize>,
+}
+
+impl MaquinaVirtual {
+    pub fn nueva(cuadruplos: Vec<Cuadruplo>, constantes: &TablaConstantes) -> Self {
+        let mut memoria = HashMap::new();
+
+        for constante in constantes.values() {
+            let direccion = constante.direccion.unwrap();
+
+            let valor = match constante.tipo {
+                Tipo::Entero => Valor::Entero(constante.valor.parse::<i64>().unwrap()),
+
+                Tipo::Flotante => Valor::Flotante(constante.valor.parse::<f64>().unwrap()),
+
+                _ => Valor::Vacio,
+            };
+
+            memoria.insert(direccion, valor);
+        }
+
+        Self {
+            cuadruplos,
+            memoria,
+            ip: 0,
+            pila_retorno: Vec::new(),
+        }
+    }
+
+    fn direccion(valor: &Option<String>) -> usize {
+        valor.as_ref().unwrap().parse::<usize>().unwrap()
+    }
+
+    fn obtener(&self, direccion: usize) -> Valor {
+        self.memoria
+            .get(&direccion)
+            .cloned()
+            .unwrap_or(Valor::Vacio)
+    }
+
+    fn guardar(&mut self, direccion: usize, valor: Valor) {
+        self.memoria.insert(direccion, valor);
+    }
+
+    fn sumar(a: Valor, b: Valor) -> Valor {
+        match (a, b) {
+            (Valor::Entero(x), Valor::Entero(y)) => Valor::Entero(x + y),
+
+            (Valor::Entero(x), Valor::Flotante(y)) => Valor::Flotante(x as f64 + y),
+
+            (Valor::Flotante(x), Valor::Entero(y)) => Valor::Flotante(x + y as f64),
+
+            (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Flotante(x + y),
+
+            _ => panic!("Suma inválida"),
+        }
+    }
+
+    fn restar(a: Valor, b: Valor) -> Valor {
+        match (a, b) {
+            (Valor::Entero(x), Valor::Entero(y)) => Valor::Entero(x - y),
+
+            (Valor::Entero(x), Valor::Flotante(y)) => Valor::Flotante(x as f64 - y),
+
+            (Valor::Flotante(x), Valor::Entero(y)) => Valor::Flotante(x - y as f64),
+
+            (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Flotante(x - y),
+
+            _ => panic!("Resta inválida"),
+        }
+    }
+
+    fn multiplicar(a: Valor, b: Valor) -> Valor {
+        match (a, b) {
+            (Valor::Entero(x), Valor::Entero(y)) => Valor::Entero(x * y),
+
+            (Valor::Entero(x), Valor::Flotante(y)) => Valor::Flotante(x as f64 * y),
+
+            (Valor::Flotante(x), Valor::Entero(y)) => Valor::Flotante(x * y as f64),
+
+            (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Flotante(x * y),
+
+            _ => panic!("Multiplicación inválida"),
+        }
+    }
+
+    fn dividir(a: Valor, b: Valor) -> Valor {
+        match (a, b) {
+            (Valor::Entero(x), Valor::Entero(y)) => Valor::Flotante(x as f64 / y as f64),
+
+            (Valor::Entero(x), Valor::Flotante(y)) => Valor::Flotante(x as f64 / y),
+
+            (Valor::Flotante(x), Valor::Entero(y)) => Valor::Flotante(x / y as f64),
+
+            (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Flotante(x / y),
+
+            _ => panic!("División inválida"),
+        }
+    }
+
+    fn comparar_menor(a: Valor, b: Valor) -> Valor {
+        match (a, b) {
+            (Valor::Entero(x), Valor::Entero(y)) => Valor::Bool(x < y),
+
+            (Valor::Entero(x), Valor::Flotante(y)) => Valor::Bool((x as f64) < y),
+
+            (Valor::Flotante(x), Valor::Entero(y)) => Valor::Bool(x < y as f64),
+
+            (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Bool(x < y),
+
+            _ => panic!("Comparación inválida"),
+        }
+    }
+
+    fn comparar_mayor(a: Valor, b: Valor) -> Valor {
+        match (a, b) {
+            (Valor::Entero(x), Valor::Entero(y)) => Valor::Bool(x > y),
+
+            (Valor::Entero(x), Valor::Flotante(y)) => Valor::Bool((x as f64) > y),
+
+            (Valor::Flotante(x), Valor::Entero(y)) => Valor::Bool(x > y as f64),
+
+            (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Bool(x > y),
+
+            _ => panic!("Comparación inválida"),
+        }
+    }
+
+    fn comparar_igual(a: Valor, b: Valor) -> Valor {
+        match (a, b) {
+            (Valor::Entero(x), Valor::Entero(y)) => Valor::Bool(x == y),
+
+            (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Bool(x == y),
+
+            (Valor::Bool(x), Valor::Bool(y)) => Valor::Bool(x == y),
+
+            _ => Valor::Bool(false),
+        }
+    }
+
+    pub fn ejecutar(&mut self) {
+        while self.ip < self.cuadruplos.len() {
+            let cuad = self.cuadruplos[self.ip].clone();
+
+            match cuad.operador {
+                Operador::Asignacion => {
+                    let origen = Self::direccion(&cuad.izquierda);
+
+                    let destino = Self::direccion(&cuad.resultado);
+
+                    let valor = self.obtener(origen);
+
+                    self.guardar(destino, valor);
+
+                    self.ip += 1;
+                }
+
+                Operador::Suma
+                | Operador::Resta
+                | Operador::Multiplicacion
+                | Operador::Division
+                | Operador::Menor
+                | Operador::Mayor
+                | Operador::IgualIgual => {
+                    let izq = Self::direccion(&cuad.izquierda);
+
+                    let der = Self::direccion(&cuad.derecha);
+
+                    let res = Self::direccion(&cuad.resultado);
+
+                    let a = self.obtener(izq);
+
+                    let b = self.obtener(der);
+
+                    let resultado = match cuad.operador {
+                        Operador::Suma => Self::sumar(a, b),
+
+                        Operador::Resta => Self::restar(a, b),
+
+                        Operador::Multiplicacion => Self::multiplicar(a, b),
+
+                        Operador::Division => Self::dividir(a, b),
+
+                        Operador::Menor => Self::comparar_menor(a, b),
+
+                        Operador::Mayor => Self::comparar_mayor(a, b),
+
+                        Operador::IgualIgual => Self::comparar_igual(a, b),
+
+                        _ => unreachable!(),
+                    };
+
+                    self.guardar(res, resultado);
+
+                    self.ip += 1;
+                }
+
+                Operador::Print => {
+                    let direccion = Self::direccion(&cuad.resultado);
+
+                    let valor = self.obtener(direccion);
+
+                    println!("OUTPUT: {:?}", valor);
+
+                    self.ip += 1;
+                }
+
+                Operador::Goto => {
+                    self.ip = cuad.resultado.unwrap().parse::<usize>().unwrap();
+                }
+
+                Operador::GotoF => {
+                    let direccion_condicion = Self::direccion(&cuad.izquierda);
+
+                    let condicion = self.obtener(direccion_condicion);
+
+                    match condicion {
+                        Valor::Bool(false) => {
+                            self.ip = cuad.resultado.unwrap().parse::<usize>().unwrap();
+                        }
+
+                        Valor::Bool(true) => {
+                            self.ip += 1;
+                        }
+
+                        _ => {
+                            panic!("GOTOF esperaba un valor booleano");
+                        }
+                    }
+                }
+
+                Operador::Era => {
+                    self.ip += 1;
+                }
+
+                Operador::Param => {
+                    let origen = Self::direccion(&cuad.izquierda);
+
+                    let destino = Self::direccion(&cuad.resultado);
+
+                    let valor = self.obtener(origen);
+
+                    self.guardar(destino, valor);
+
+                    self.ip += 1;
+                }
+
+                Operador::Gosub => {
+                    let destino = cuad.resultado.unwrap().parse::<usize>().unwrap();
+
+                    self.pila_retorno.push(self.ip + 1);
+
+                    self.ip = destino;
+                }
+
+                Operador::Return => {
+                    if let Some(retorno) = self.pila_retorno.pop() {
+                        self.ip = retorno;
+                    } else {
+                        self.ip += 1;
+                    }
+                }
+
+                Operador::EndFunc => {
+                    if let Some(retorno) = self.pila_retorno.pop() {
+                        self.ip = retorno;
+                    } else {
+                        self.ip += 1;
+                    }
+                }
+
+                _ => {
+                    panic!("Operador no implementado en VM: {:?}", cuad.operador);
+                }
+            }
+        }
     }
 }
