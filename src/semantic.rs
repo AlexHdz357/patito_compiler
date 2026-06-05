@@ -672,35 +672,50 @@ impl GeneradorCuadruplos {
     }
 
     pub fn generar_asignacion(
-        &mut self,
-        variable: String,
-    ) {
+    &mut self,
+    variable: String,
+    tipo_variable: Tipo,
+    cubo: &CuboSemantico,
+) -> SemanticResult<()> {
 
-        let valor =
-            self.operandos
-                .pop()
-                .unwrap();
+    let valor =
+        self.operandos
+            .pop()
+            .unwrap();
 
-        self.tipos.pop();
+    let tipo_valor =
+        self.tipos
+            .pop()
+            .unwrap();
 
-        self.cuadruplos.push(
-            Cuadruplo {
+    let tipo_resultado =
+        cubo.validar(
+            tipo_variable.clone(),
+            "=",
+            tipo_valor.clone(),
+        );
 
-                operador:
-                    Operador::Asignacion,
-
-                izquierda:
-                    Some(valor),
-
-                derecha:
-                    None,
-
-                resultado:
-                    Some(variable),
-            }
+    if tipo_resultado == Tipo::Error {
+        return Err(
+            format!(
+                "Asignación inválida: variable {:?} = valor {:?}",
+                tipo_variable,
+                tipo_valor
+            )
         );
     }
 
+    self.cuadruplos.push(
+        Cuadruplo {
+            operador: Operador::Asignacion,
+            izquierda: Some(valor),
+            derecha: None,
+            resultado: Some(variable),
+        }
+    );
+
+    Ok(())
+}
     pub fn generar_print(
         &mut self,
     ) {

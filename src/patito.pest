@@ -152,22 +152,32 @@ expresion = {
 }
 
 op_rel = {
-      ">"
-    | "<"
+      ">="
+    | "<="
     | "=="
     | "!="
-    | ">="
-    | "<="
+    | ">"
+    | "<"
+}
+
+op_suma = {
+      "+"
+    | "-"
+}
+
+op_mult = {
+      "*"
+    | "/"
 }
 
 exp = {
     termino
-    ~ (("+" | "-") ~ termino)*
+    ~ (op_suma ~ termino)*
 }
 
 termino = {
     factor
-    ~ (("*" | "/") ~ factor)*
+    ~ (op_mult ~ factor)*
 }
 
 factor = {

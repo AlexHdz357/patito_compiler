@@ -112,9 +112,8 @@ fn procesar_termino(
         gen,
     );
 
-    while let Some(op) =
-        inner.next()
-    {
+
+    while let Some(op) = inner.next() {
 
         let operador =
             op.as_str()
@@ -247,6 +246,9 @@ fn procesar_asignacion(
     gen: &mut GeneradorCuadruplos,
 ) {
 
+    let cubo =
+        CuboSemantico::nuevo();
+
     let mut inner =
         pair.into_inner();
 
@@ -255,6 +257,12 @@ fn procesar_asignacion(
             .unwrap()
             .as_str()
             .to_string();
+
+    let tipo_variable =
+        obtener_tipo_variable(
+            &variable,
+            tabla,
+        );
 
     let expresion =
         inner.next()
@@ -268,9 +276,10 @@ fn procesar_asignacion(
 
     gen.generar_asignacion(
         variable,
-    );
+        tipo_variable,
+        &cubo,
+    ).unwrap();
 }
-
 fn procesar_print(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
