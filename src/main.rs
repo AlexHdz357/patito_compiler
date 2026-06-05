@@ -408,11 +408,9 @@ z: flotante;
 
 inicio
 
-x = 5 + 3;
+x = 5 + 3 * 2;
 
-y = x * 2;
-
-escribe(y);
+escribe(x);
 
 fin
 "#;
