@@ -857,7 +857,34 @@ impl MaquinaVirtual {
             _ => panic!("Comparación inválida"),
         }
     }
+    fn comparar_menor_igual(a: Valor, b: Valor) -> Valor {
+        match (a, b) {
+            (Valor::Entero(x), Valor::Entero(y)) => Valor::Bool(x <= y),
+            (Valor::Entero(x), Valor::Flotante(y)) => Valor::Bool((x as f64) <= y),
+            (Valor::Flotante(x), Valor::Entero(y)) => Valor::Bool(x <= y as f64),
+            (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Bool(x <= y),
+            _ => panic!("Comparación <= inválida"),
+        }
+    }
 
+    fn comparar_mayor_igual(a: Valor, b: Valor) -> Valor {
+        match (a, b) {
+            (Valor::Entero(x), Valor::Entero(y)) => Valor::Bool(x >= y),
+            (Valor::Entero(x), Valor::Flotante(y)) => Valor::Bool((x as f64) >= y),
+            (Valor::Flotante(x), Valor::Entero(y)) => Valor::Bool(x >= y as f64),
+            (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Bool(x >= y),
+            _ => panic!("Comparación >= inválida"),
+        }
+    }
+
+    fn comparar_diferente(a: Valor, b: Valor) -> Valor {
+        match (a, b) {
+            (Valor::Entero(x), Valor::Entero(y)) => Valor::Bool(x != y),
+            (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Bool(x != y),
+            (Valor::Bool(x), Valor::Bool(y)) => Valor::Bool(x != y),
+            _ => Valor::Bool(true),
+        }
+    }
     fn comparar_igual(a: Valor, b: Valor) -> Valor {
         match (a, b) {
             (Valor::Entero(x), Valor::Entero(y)) => Valor::Bool(x == y),
@@ -893,7 +920,10 @@ impl MaquinaVirtual {
                 | Operador::Division
                 | Operador::Menor
                 | Operador::Mayor
-                | Operador::IgualIgual => {
+                | Operador::MenorIgual
+                | Operador::MayorIgual
+                | Operador::IgualIgual
+                | Operador::Diferente => {
                     let izq = Self::direccion(&cuad.izquierda);
 
                     let der = Self::direccion(&cuad.derecha);
@@ -906,19 +936,15 @@ impl MaquinaVirtual {
 
                     let resultado = match cuad.operador {
                         Operador::Suma => Self::sumar(a, b),
-
                         Operador::Resta => Self::restar(a, b),
-
                         Operador::Multiplicacion => Self::multiplicar(a, b),
-
                         Operador::Division => Self::dividir(a, b),
-
                         Operador::Menor => Self::comparar_menor(a, b),
-
                         Operador::Mayor => Self::comparar_mayor(a, b),
-
+                        Operador::MenorIgual => Self::comparar_menor_igual(a, b),
+                        Operador::MayorIgual => Self::comparar_mayor_igual(a, b),
                         Operador::IgualIgual => Self::comparar_igual(a, b),
-
+                        Operador::Diferente => Self::comparar_diferente(a, b),
                         _ => unreachable!(),
                     };
 
@@ -999,10 +1025,6 @@ impl MaquinaVirtual {
                     } else {
                         self.ip += 1;
                     }
-                }
-
-                _ => {
-                    panic!("Operador no implementado en VM: {:?}", cuad.operador);
                 }
             }
         }
