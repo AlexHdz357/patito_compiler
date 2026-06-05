@@ -10,16 +10,9 @@ use semantic::*;
 #[grammar = "patito.pest"]
 struct PatitoParser;
 
-fn obtener_tipo_variable(
-    nombre: &str,
-    tabla: &TablaVariables,
-) -> Tipo {
-
-    match buscar_variable(
-        tabla,
-        nombre,
-    ) {
-        Ok(tipo) => tipo,
+fn obtener_variable(nombre: &str, tabla: &TablaVariables) -> (Tipo, String) {
+    match buscar_variable_info(tabla, nombre) {
+        Ok(info) => (info.tipo, info.direccion.unwrap().to_string()),
 
         Err(msg) => {
             panic!("{}", msg);
@@ -30,63 +23,37 @@ fn obtener_tipo_variable(
 fn procesar_factor(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
+    constantes: &mut TablaConstantes,
+    direcciones: &mut AdministradorDirecciones,
     generador: &mut GeneradorCuadruplos,
 ) {
-
-    let inner =
-        pair.into_inner()
-            .next()
-            .unwrap();
+    let inner = pair.into_inner().next().unwrap();
 
     match inner.as_rule() {
-
         Rule::id => {
+            let nombre = inner.as_str().to_string();
 
-            let nombre =
-                inner.as_str()
-                    .to_string();
+            let (tipo, direccion) = obtener_variable(&nombre, tabla);
 
-            let tipo =
-                obtener_tipo_variable(
-                    &nombre,
-                    tabla,
-                );
-
-            generador.push_operando(
-                nombre,
-                tipo,
-            );
+            generador.push_operando(direccion, tipo);
         }
 
         Rule::cte => {
+            let valor = inner.as_str().to_string();
 
-            let valor =
-                inner.as_str()
-                    .to_string();
+            let tipo = if valor.contains(".") {
+                Tipo::Flotante
+            } else {
+                Tipo::Entero
+            };
 
-            if valor.contains(".")
-            {
-                generador.push_operando(
-                    valor,
-                    Tipo::Flotante,
-                );
-            }
-            else {
+            let direccion = registrar_constante(constantes, valor, tipo.clone(), direcciones);
 
-                generador.push_operando(
-                    valor,
-                    Tipo::Entero,
-                );
-            }
+            generador.push_operando(direccion.to_string(), tipo);
         }
 
         Rule::expresion => {
-
-            procesar_expresion(
-                inner,
-                tabla,
-                generador,
-            );
+            procesar_expresion(inner, tabla, constantes, direcciones, generador);
         }
 
         _ => {}
@@ -96,204 +63,119 @@ fn procesar_factor(
 fn procesar_termino(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
+    constantes: &mut TablaConstantes,
+    direcciones: &mut AdministradorDirecciones,
     generador: &mut GeneradorCuadruplos,
     cubo: &CuboSemantico,
 ) {
+    let mut inner = pair.into_inner();
 
-    let mut inner =
-        pair.into_inner();
+    let primero = inner.next().unwrap();
 
-    let primero =
-        inner.next().unwrap();
-
-    procesar_factor(
-        primero,
-        tabla,
-        generador,
-    );
-
+    procesar_factor(primero, tabla, constantes, direcciones, generador);
 
     while let Some(op) = inner.next() {
+        let operador = op.as_str().to_string();
 
-        let operador =
-            op.as_str()
-                .to_string();
+        let siguiente = inner.next().unwrap();
 
-        let siguiente =
-            inner.next()
-                .unwrap();
+        procesar_factor(siguiente, tabla, constantes, direcciones, generador);
 
-        procesar_factor(
-            siguiente,
-            tabla,
-            generador,
-        );
+        generador.push_operador(operador);
 
-        generador.push_operador(
-            operador,
-        );
-
-        generador.generar_operacion(
-            cubo,
-        ).unwrap();
+        generador.generar_operacion(cubo, direcciones).unwrap();
     }
 }
 
 fn procesar_exp(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
+    constantes: &mut TablaConstantes,
+    direcciones: &mut AdministradorDirecciones,
     generador: &mut GeneradorCuadruplos,
     cubo: &CuboSemantico,
 ) {
+    let mut inner = pair.into_inner();
 
-    let mut inner =
-        pair.into_inner();
+    let primero = inner.next().unwrap();
 
-    let primero =
-        inner.next().unwrap();
+    procesar_termino(primero, tabla, constantes, direcciones, generador, cubo);
 
-    procesar_termino(
-        primero,
-        tabla,
-        generador,
-        cubo,
-    );
+    while let Some(op) = inner.next() {
+        let operador = op.as_str().to_string();
 
-    while let Some(op) =
-        inner.next()
-    {
+        let siguiente = inner.next().unwrap();
 
-        let operador =
-            op.as_str()
-                .to_string();
+        procesar_termino(siguiente, tabla, constantes, direcciones, generador, cubo);
 
-        let siguiente =
-            inner.next()
-                .unwrap();
+        generador.push_operador(operador);
 
-        procesar_termino(
-            siguiente,
-            tabla,
-            generador,
-            cubo,
-        );
-
-        generador.push_operador(
-            operador,
-        );
-
-        generador.generar_operacion(
-            cubo,
-        ).unwrap();
+        generador.generar_operacion(cubo, direcciones).unwrap();
     }
 }
 
 fn procesar_expresion(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
+    constantes: &mut TablaConstantes,
+    direcciones: &mut AdministradorDirecciones,
     generador: &mut GeneradorCuadruplos,
 ) {
+    let cubo = CuboSemantico::nuevo();
 
-    let cubo =
-        CuboSemantico::nuevo();
+    let mut inner = pair.into_inner();
 
-    let mut inner =
-        pair.into_inner();
+    let izquierda = inner.next().unwrap();
 
-    let izquierda =
-        inner.next()
-            .unwrap();
+    procesar_exp(izquierda, tabla, constantes, direcciones, generador, &cubo);
 
-    procesar_exp(
-        izquierda,
-        tabla,
-        generador,
-        &cubo,
-    );
+    if let Some(op_rel) = inner.next() {
+        let operador = op_rel.as_str().to_string();
 
-    if let Some(op_rel) =
-        inner.next()
-    {
+        let derecha = inner.next().unwrap();
 
-        let operador =
-            op_rel.as_str()
-                .to_string();
+        procesar_exp(derecha, tabla, constantes, direcciones, generador, &cubo);
 
-        let derecha =
-            inner.next()
-                .unwrap();
+        generador.push_operador(operador);
 
-        procesar_exp(
-            derecha,
-            tabla,
-            generador,
-            &cubo,
-        );
-
-        generador.push_operador(
-            operador,
-        );
-
-        generador.generar_operacion(
-            &cubo,
-        ).unwrap();
+        generador.generar_operacion(&cubo, direcciones).unwrap();
     }
 }
 
 fn procesar_asignacion(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
+    constantes: &mut TablaConstantes,
+    direcciones: &mut AdministradorDirecciones,
     generador: &mut GeneradorCuadruplos,
 ) {
+    let cubo = CuboSemantico::nuevo();
 
-    let cubo =
-        CuboSemantico::nuevo();
+    let mut inner = pair.into_inner();
 
-    let mut inner =
-        pair.into_inner();
+    let variable = inner.next().unwrap().as_str().to_string();
 
-    let variable =
-        inner.next()
-            .unwrap()
-            .as_str()
-            .to_string();
+    let (tipo_variable, direccion_variable) = obtener_variable(&variable, tabla);
 
-    let tipo_variable =
-        obtener_tipo_variable(
-            &variable,
-            tabla,
-        );
+    let expresion = inner.next().unwrap();
 
-    let expresion =
-        inner.next()
-            .unwrap();
+    procesar_expresion(expresion, tabla, constantes, direcciones, generador);
 
-    procesar_expresion(
-        expresion,
-        tabla,
-        generador,
-    );
-
-    generador.generar_asignacion(
-        variable,
-        tipo_variable,
-        &cubo,
-    ).unwrap();
+    generador
+        .generar_asignacion(direccion_variable, tipo_variable, &cubo)
+        .unwrap();
 }
-
 
 fn procesar_print(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
+    constantes: &mut TablaConstantes,
+    direcciones: &mut AdministradorDirecciones,
     generador: &mut GeneradorCuadruplos,
 ) {
     for nodo in pair.into_inner() {
         if nodo.as_rule() == Rule::expresion {
-            procesar_expresion(
-                nodo,
-                tabla,
-                generador,
-            );
+            procesar_expresion(nodo, tabla, constantes, direcciones, generador);
 
             generador.generar_print();
             return;
@@ -306,6 +188,8 @@ fn procesar_print(
 fn procesar_condicion(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
+    constantes: &mut TablaConstantes,
+    direcciones: &mut AdministradorDirecciones,
     generador: &mut GeneradorCuadruplos,
 ) {
     let mut expresion_condicion: Option<Pair<Rule>> = None;
@@ -328,61 +212,42 @@ fn procesar_condicion(
     procesar_expresion(
         expresion_condicion.unwrap(),
         tabla,
+        constantes,
+        direcciones,
         generador,
     );
 
-    let salto_falso =
-        generador.generar_gotof().unwrap();
+    let salto_falso = generador.generar_gotof().unwrap();
 
-    procesar_cuerpo(
-        cuerpos.remove(0),
-        tabla,
-        generador,
-    );
+    procesar_cuerpo(cuerpos.remove(0), tabla, constantes, direcciones, generador);
 
-    if cuerpos.len() > 0 {
-        let salto_fin =
-            generador.generar_goto(0);
+    if !cuerpos.is_empty() {
+        let salto_fin = generador.generar_goto(0);
 
-        let inicio_sino =
-            generador.siguiente_cuadruplo();
+        let inicio_sino = generador.siguiente_cuadruplo();
 
-        generador.rellenar_salto(
-            salto_falso,
-            inicio_sino,
-        );
+        generador.rellenar_salto(salto_falso, inicio_sino);
 
-        procesar_cuerpo(
-            cuerpos.remove(0),
-            tabla,
-            generador,
-        );
+        procesar_cuerpo(cuerpos.remove(0), tabla, constantes, direcciones, generador);
 
-        let fin =
-            generador.siguiente_cuadruplo();
+        let fin = generador.siguiente_cuadruplo();
 
-        generador.rellenar_salto(
-            salto_fin,
-            fin,
-        );
+        generador.rellenar_salto(salto_fin, fin);
     } else {
-        let fin =
-            generador.siguiente_cuadruplo();
+        let fin = generador.siguiente_cuadruplo();
 
-        generador.rellenar_salto(
-            salto_falso,
-            fin,
-        );
+        generador.rellenar_salto(salto_falso, fin);
     }
 }
 
 fn procesar_ciclo(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
+    constantes: &mut TablaConstantes,
+    direcciones: &mut AdministradorDirecciones,
     generador: &mut GeneradorCuadruplos,
 ) {
-    let inicio_ciclo =
-        generador.siguiente_cuadruplo();
+    let inicio_ciclo = generador.siguiente_cuadruplo();
 
     let mut expresion_condicion: Option<Pair<Rule>> = None;
     let mut cuerpo_ciclo: Option<Pair<Rule>> = None;
@@ -404,81 +269,54 @@ fn procesar_ciclo(
     procesar_expresion(
         expresion_condicion.unwrap(),
         tabla,
+        constantes,
+        direcciones,
         generador,
     );
 
-    let salto_falso =
-        generador.generar_gotof().unwrap();
+    let salto_falso = generador.generar_gotof().unwrap();
 
     procesar_cuerpo(
         cuerpo_ciclo.unwrap(),
         tabla,
+        constantes,
+        direcciones,
         generador,
     );
 
-    generador.generar_goto(
-        inicio_ciclo,
-    );
+    generador.generar_goto(inicio_ciclo);
 
-    let fin =
-        generador.siguiente_cuadruplo();
+    let fin = generador.siguiente_cuadruplo();
 
-    generador.rellenar_salto(
-        salto_falso,
-        fin,
-    );
+    generador.rellenar_salto(salto_falso, fin);
 }
 
 fn procesar_cuerpo(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
+    constantes: &mut TablaConstantes,
+    direcciones: &mut AdministradorDirecciones,
     generador: &mut GeneradorCuadruplos,
 ) {
-
-    for estatuto
-        in pair.into_inner()
-    {
-
-        let inner =
-            estatuto
-                .into_inner()
-                .next()
-                .unwrap();
+    for estatuto in pair.into_inner() {
+        let inner = estatuto.into_inner().next().unwrap();
 
         match inner.as_rule() {
-
             Rule::asigna => {
-
-                procesar_asignacion(
-                    inner,
-                    tabla,
-                    generador,
-                );
+                procesar_asignacion(inner, tabla, constantes, direcciones, generador);
             }
 
             Rule::imprime => {
-
-                procesar_print(
-                    inner,
-                    tabla,
-                    generador,
-                );
+                procesar_print(inner, tabla, constantes, direcciones, generador);
             }
+
             Rule::condicion => {
-            procesar_condicion(
-                inner,
-                tabla,
-                generador,
-            );
-        }
+                procesar_condicion(inner, tabla, constantes, direcciones, generador);
+            }
 
             Rule::ciclo => {
-            procesar_ciclo(
-                inner,
-                tabla,
-                generador,
-            );
-        }
+                procesar_ciclo(inner, tabla, constantes, direcciones, generador);
+            }
 
             _ => {}
         }
@@ -487,60 +325,34 @@ fn procesar_cuerpo(
 
 fn registrar_variables(
     pair: Pair<Rule>,
-    tabla:
-        &mut TablaVariables,
+    tabla: &mut TablaVariables,
+    direcciones: &mut AdministradorDirecciones,
 ) {
-
-    for p in pair.into_inner()
-    {
-
-        if p.as_rule()
-            != Rule::lista_vars
-        {
+    for p in pair.into_inner() {
+        if p.as_rule() != Rule::lista_vars {
             continue;
         }
 
-        let mut inner =
-            p.into_inner();
+        let mut inner = p.into_inner();
 
-        while let Some(id) =
-            inner.next()
-        {
+        while let Some(id) = inner.next() {
+            let tipo = inner.next().unwrap();
 
-            let tipo =
-                inner.next()
-                    .unwrap();
+            let nombre = id.as_str().to_string();
 
-            let nombre =
-                id.as_str()
-                    .to_string();
-
-            let tipo_var =
-                match tipo.as_str()
-            {
-                "entero" =>
-                    Tipo::Entero,
-
-                "flotante" =>
-                    Tipo::Flotante,
-
-                _ =>
-                    Tipo::Error,
+            let tipo_var = match tipo.as_str() {
+                "entero" => Tipo::Entero,
+                "flotante" => Tipo::Flotante,
+                _ => Tipo::Error,
             };
 
-            agregar_variable(
-                tabla,
-                nombre,
-                tipo_var,
-            );
+            agregar_variable(tabla, nombre, tipo_var, direcciones);
         }
     }
 }
 
 fn main() {
-
-    let programa =
-r#"
+    let programa = r#"
 programa test;
 
 vars:
@@ -566,47 +378,30 @@ si (x == y) {
 fin
 "#;
 
-    let parse =
-        PatitoParser::parse(
-            Rule::program,
-            programa,
-        )
-        .expect(
-            "Error de sintaxis"
-        );
+    let parse = PatitoParser::parse(Rule::program, programa).expect("Error de sintaxis");
 
-    let mut tabla:
-        TablaVariables =
-        std::collections::HashMap::new();
+    let mut tabla: TablaVariables = std::collections::HashMap::new();
 
-    let mut generador =
-        GeneradorCuadruplos::nuevo();
+    let mut constantes: TablaConstantes = std::collections::HashMap::new();
 
-    let program =
-        parse.into_iter()
-            .next()
-            .unwrap();
+    let mut direcciones = AdministradorDirecciones::nuevo();
 
-    for nodo
-        in program.into_inner()
-    {
+    let mut generador = GeneradorCuadruplos::nuevo();
 
-        match nodo.as_rule()
-        {
+    let program = parse.into_iter().next().unwrap();
 
+    for nodo in program.into_inner() {
+        match nodo.as_rule() {
             Rule::vars_block => {
-
-                registrar_variables(
-                    nodo,
-                    &mut tabla,
-                );
+                registrar_variables(nodo, &mut tabla, &mut direcciones);
             }
 
             Rule::cuerpo => {
-
                 procesar_cuerpo(
                     nodo,
                     &tabla,
+                    &mut constantes,
+                    &mut direcciones,
                     &mut generador,
                 );
             }
@@ -615,29 +410,15 @@ fin
         }
     }
 
-    println!(
-        "\n=== VARIABLES ==="
-    );
+    println!("\n=== VARIABLES ===");
+    println!("{:#?}", tabla);
 
-    println!(
-        "{:#?}",
-        tabla
-    );
+    println!("\n=== CONSTANTES ===");
+    println!("{:#?}", constantes);
 
-    println!(
-        "\n=== CUADRUPLOS ==="
-    );
+    println!("\n=== CUADRUPLOS ===");
 
-    for (i, c)
-        in generador.cuadruplos
-            .iter()
-            .enumerate()
-    {
-
-        println!(
-            "{} -> {:?}",
-            i,
-            c
-        );
+    for (i, c) in generador.cuadruplos.iter().enumerate() {
+        println!("{} -> {:?}", i, c);
     }
 }
