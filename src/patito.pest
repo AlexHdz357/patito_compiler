@@ -73,15 +73,33 @@ funcs = {
     (func)*
 }
 
+parametros = {
+    (id ~ ":" ~ TIPO ~ ("," ~ id ~ ":" ~ TIPO)*)?
+}
+
+argumentos = {
+    (expresion ~ ("," ~ expresion)*)?
+}
+
 func = {
     TIPO
     ~ id
     ~ "("
+    ~ parametros
     ~ ")"
     ~ "{"
     ~ cuerpo
     ~ "}"
 }
+
+llamada = {
+    id
+    ~ "("
+    ~ argumentos
+    ~ ")"
+    ~ ";"
+}
+
 
 /////////////////////
 // CUERPO
@@ -138,13 +156,6 @@ ciclo = {
     ~ "}"
 }
 
-llamada = {
-    id
-    ~ "("
-    ~ expresion?
-    ~ ")"
-    ~ ";"
-}
 
 /////////////////////
 // EXPRESIONES

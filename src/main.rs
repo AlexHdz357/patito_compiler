@@ -13,10 +13,7 @@ struct PatitoParser;
 fn obtener_variable(nombre: &str, tabla: &TablaVariables) -> (Tipo, String) {
     match buscar_variable_info(tabla, nombre) {
         Ok(info) => (info.tipo, info.direccion.unwrap().to_string()),
-
-        Err(msg) => {
-            panic!("{}", msg);
-        }
+        Err(msg) => panic!("{}", msg),
     }
 }
 
@@ -32,9 +29,7 @@ fn procesar_factor(
     match inner.as_rule() {
         Rule::id => {
             let nombre = inner.as_str().to_string();
-
             let (tipo, direccion) = obtener_variable(&nombre, tabla);
-
             generador.push_operando(direccion, tipo);
         }
 
@@ -76,7 +71,6 @@ fn procesar_termino(
 
     while let Some(op) = inner.next() {
         let operador = op.as_str().to_string();
-
         let siguiente = inner.next().unwrap();
 
         procesar_factor(siguiente, tabla, constantes, direcciones, generador);
@@ -103,7 +97,6 @@ fn procesar_exp(
 
     while let Some(op) = inner.next() {
         let operador = op.as_str().to_string();
-
         let siguiente = inner.next().unwrap();
 
         procesar_termino(siguiente, tabla, constantes, direcciones, generador, cubo);
@@ -131,7 +124,6 @@ fn procesar_expresion(
 
     if let Some(op_rel) = inner.next() {
         let operador = op_rel.as_str().to_string();
-
         let derecha = inner.next().unwrap();
 
         procesar_exp(derecha, tabla, constantes, direcciones, generador, &cubo);
@@ -154,9 +146,7 @@ fn procesar_asignacion(
     let mut inner = pair.into_inner();
 
     let variable = inner.next().unwrap().as_str().to_string();
-
     let (tipo_variable, direccion_variable) = obtener_variable(&variable, tabla);
-
     let expresion = inner.next().unwrap();
 
     procesar_expresion(expresion, tabla, constantes, direcciones, generador);
@@ -185,6 +175,56 @@ fn procesar_print(
     panic!("Error: no se encontró expresión en escribe()");
 }
 
+fn procesar_retorno(
+    pair: Pair<Rule>,
+    tabla: &TablaVariables,
+    constantes: &mut TablaConstantes,
+    direcciones: &mut AdministradorDirecciones,
+    generador: &mut GeneradorCuadruplos,
+) {
+    for nodo in pair.into_inner() {
+        if nodo.as_rule() == Rule::expresion {
+            procesar_expresion(nodo, tabla, constantes, direcciones, generador);
+
+            generador.generar_return();
+            return;
+        }
+    }
+
+    panic!("Error: return sin expresión");
+}
+
+fn procesar_llamada(
+    pair: Pair<Rule>,
+    tabla: &TablaVariables,
+    constantes: &mut TablaConstantes,
+    direcciones: &mut AdministradorDirecciones,
+    generador: &mut GeneradorCuadruplos,
+) {
+    let mut inner = pair.into_inner();
+
+    let nombre_funcion = inner.next().unwrap().as_str().to_string();
+
+    generador.generar_era(nombre_funcion.clone());
+
+    let mut contador_param = 1;
+
+    for nodo in inner {
+        if nodo.as_rule() == Rule::argumentos {
+            for arg in nodo.into_inner() {
+                if arg.as_rule() == Rule::expresion {
+                    procesar_expresion(arg, tabla, constantes, direcciones, generador);
+
+                    generador.generar_param(contador_param);
+                    contador_param += 1;
+                }
+            }
+        }
+    }
+
+    generador.generar_gosub(nombre_funcion, 0);
+}
+
 fn procesar_condicion(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
@@ -197,14 +237,8 @@ fn procesar_condicion(
 
     for nodo in pair.into_inner() {
         match nodo.as_rule() {
-            Rule::expresion => {
-                expresion_condicion = Some(nodo);
-            }
-
-            Rule::cuerpo => {
-                cuerpos.push(nodo);
-            }
-
+            Rule::expresion => expresion_condicion = Some(nodo),
+            Rule::cuerpo => cuerpos.push(nodo),
             _ => {}
         }
     }
@@ -223,7 +257,6 @@ fn procesar_condicion(
 
     if !cuerpos.is_empty() {
         let salto_fin = generador.generar_goto(0);
-
         let inicio_sino = generador.siguiente_cuadruplo();
 
         generador.rellenar_salto(salto_falso, inicio_sino);
@@ -235,7 +268,6 @@ fn procesar_condicion(
         generador.rellenar_salto(salto_fin, fin);
     } else {
         let fin = generador.siguiente_cuadruplo();
-
         generador.rellenar_salto(salto_falso, fin);
     }
 }
@@ -254,14 +286,8 @@ fn procesar_ciclo(
 
     for nodo in pair.into_inner() {
         match nodo.as_rule() {
-            Rule::expresion => {
-                expresion_condicion = Some(nodo);
-            }
-
-            Rule::cuerpo => {
-                cuerpo_ciclo = Some(nodo);
-            }
-
+            Rule::expresion => expresion_condicion = Some(nodo),
+            Rule::cuerpo => cuerpo_ciclo = Some(nodo),
             _ => {}
         }
     }
@@ -318,6 +344,14 @@ fn procesar_cuerpo(
                 procesar_ciclo(inner, tabla, constantes, direcciones, generador);
             }
 
+            Rule::retorno => {
+                procesar_retorno(inner, tabla, constantes, direcciones, generador);
+            }
+
+            Rule::llamada => {
+                procesar_llamada(inner, tabla, constantes, direcciones, generador);
+            }
+
             _ => {}
         }
     }
@@ -351,6 +385,44 @@ fn registrar_variables(
     }
 }
 
+fn procesar_funcion(
+    pair: Pair<Rule>,
+    tabla: &TablaVariables,
+    constantes: &mut TablaConstantes,
+    direcciones: &mut AdministradorDirecciones,
+    generador: &mut GeneradorCuadruplos,
+) {
+    let inicio_funcion = generador.siguiente_cuadruplo();
+
+    let mut nombre_funcion = String::new();
+    let mut cuerpo_funcion: Option<Pair<Rule>> = None;
+
+    for nodo in pair.into_inner() {
+        match nodo.as_rule() {
+            Rule::id => {
+                nombre_funcion = nodo.as_str().to_string();
+            }
+
+            Rule::cuerpo => {
+                cuerpo_funcion = Some(nodo);
+            }
+
+            _ => {}
+        }
+    }
+
+    println!(
+        "Función '{}' inicia en cuádruplo {}",
+        nombre_funcion, inicio_funcion
+    );
+
+    if let Some(cuerpo) = cuerpo_funcion {
+        procesar_cuerpo(cuerpo, tabla, constantes, direcciones, generador);
+    }
+
+    generador.generar_endfunc();
+}
+
 fn main() {
     let programa = r#"
 programa test;
@@ -359,21 +431,16 @@ vars:
 x: entero;
 y: entero;
 
+entero suma(a: entero, b: entero) {
+    return x + y;
+}
+
 inicio
 
-x = 0;
+x = 2;
 y = 3;
 
-mientras (x < y) haz {
-    escribe(x);
-    x = x + 1;
-}
-
-si (x == y) {
-    escribe(x);
-} sino {
-    escribe(y);
-}
+suma(x, y);
 
 fin
 "#;
@@ -394,6 +461,20 @@ fin
         match nodo.as_rule() {
             Rule::vars_block => {
                 registrar_variables(nodo, &mut tabla, &mut direcciones);
+            }
+
+            Rule::funcs => {
+                for funcion in nodo.into_inner() {
+                    if funcion.as_rule() == Rule::func {
+                        procesar_funcion(
+                            funcion,
+                            &tabla,
+                            &mut constantes,
+                            &mut direcciones,
+                            &mut generador,
+                        );
+                    }
+                }
             }
 
             Rule::cuerpo => {

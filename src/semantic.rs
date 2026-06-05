@@ -630,4 +630,57 @@ impl GeneradorCuadruplos {
     pub fn rellenar_salto(&mut self, indice: usize, destino: usize) {
         self.cuadruplos[indice].resultado = Some(destino.to_string());
     }
+
+    pub fn generar_era(&mut self, nombre_funcion: String) {
+        self.cuadruplos.push(Cuadruplo {
+            operador: Operador::Era,
+            izquierda: None,
+            derecha: None,
+            resultado: Some(nombre_funcion),
+        });
+    }
+
+    pub fn generar_param(&mut self, numero_parametro: usize) {
+        let valor = self.operandos.pop().unwrap();
+
+        self.tipos.pop();
+
+        self.cuadruplos.push(Cuadruplo {
+            operador: Operador::Param,
+            izquierda: Some(valor),
+            derecha: None,
+            resultado: Some(numero_parametro.to_string()),
+        });
+    }
+
+    pub fn generar_gosub(&mut self, nombre_funcion: String, inicio: usize) {
+        self.cuadruplos.push(Cuadruplo {
+            operador: Operador::Gosub,
+            izquierda: Some(nombre_funcion),
+            derecha: None,
+            resultado: Some(inicio.to_string()),
+        });
+    }
+
+    pub fn generar_return(&mut self) {
+        let valor = self.operandos.pop().unwrap();
+
+        self.tipos.pop();
+
+        self.cuadruplos.push(Cuadruplo {
+            operador: Operador::Return,
+            izquierda: Some(valor),
+            derecha: None,
+            resultado: None,
+        });
+    }
+
+    pub fn generar_endfunc(&mut self) {
+        self.cuadruplos.push(Cuadruplo {
+            operador: Operador::EndFunc,
+            izquierda: None,
+            derecha: None,
+            resultado: None,
+        });
+    }
 }
