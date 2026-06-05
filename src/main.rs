@@ -302,6 +302,133 @@ fn procesar_print(
 
     panic!("Error: no se encontró expresión en escribe()");
 }
+
+fn procesar_condicion(
+    pair: Pair<Rule>,
+    tabla: &TablaVariables,
+    generador: &mut GeneradorCuadruplos,
+) {
+    let mut expresion_condicion: Option<Pair<Rule>> = None;
+    let mut cuerpos: Vec<Pair<Rule>> = Vec::new();
+
+    for nodo in pair.into_inner() {
+        match nodo.as_rule() {
+            Rule::expresion => {
+                expresion_condicion = Some(nodo);
+            }
+
+            Rule::cuerpo => {
+                cuerpos.push(nodo);
+            }
+
+            _ => {}
+        }
+    }
+
+    procesar_expresion(
+        expresion_condicion.unwrap(),
+        tabla,
+        generador,
+    );
+
+    let salto_falso =
+        generador.generar_gotof().unwrap();
+
+    procesar_cuerpo(
+        cuerpos.remove(0),
+        tabla,
+        generador,
+    );
+
+    if cuerpos.len() > 0 {
+        let salto_fin =
+            generador.generar_goto(0);
+
+        let inicio_sino =
+            generador.siguiente_cuadruplo();
+
+        generador.rellenar_salto(
+            salto_falso,
+            inicio_sino,
+        );
+
+        procesar_cuerpo(
+            cuerpos.remove(0),
+            tabla,
+            generador,
+        );
+
+        let fin =
+            generador.siguiente_cuadruplo();
+
+        generador.rellenar_salto(
+            salto_fin,
+            fin,
+        );
+    } else {
+        let fin =
+            generador.siguiente_cuadruplo();
+
+        generador.rellenar_salto(
+            salto_falso,
+            fin,
+        );
+    }
+}
+
+fn procesar_ciclo(
+    pair: Pair<Rule>,
+    tabla: &TablaVariables,
+    generador: &mut GeneradorCuadruplos,
+) {
+    let inicio_ciclo =
+        generador.siguiente_cuadruplo();
+
+    let mut expresion_condicion: Option<Pair<Rule>> = None;
+    let mut cuerpo_ciclo: Option<Pair<Rule>> = None;
+
+    for nodo in pair.into_inner() {
+        match nodo.as_rule() {
+            Rule::expresion => {
+                expresion_condicion = Some(nodo);
+            }
+
+            Rule::cuerpo => {
+                cuerpo_ciclo = Some(nodo);
+            }
+
+            _ => {}
+        }
+    }
+
+    procesar_expresion(
+        expresion_condicion.unwrap(),
+        tabla,
+        generador,
+    );
+
+    let salto_falso =
+        generador.generar_gotof().unwrap();
+
+    procesar_cuerpo(
+        cuerpo_ciclo.unwrap(),
+        tabla,
+        generador,
+    );
+
+    generador.generar_goto(
+        inicio_ciclo,
+    );
+
+    let fin =
+        generador.siguiente_cuadruplo();
+
+    generador.rellenar_salto(
+        salto_falso,
+        fin,
+    );
+}
+
 fn procesar_cuerpo(
     pair: Pair<Rule>,
     tabla: &TablaVariables,
@@ -337,6 +464,21 @@ fn procesar_cuerpo(
                     generador,
                 );
             }
+            Rule::condicion => {
+            procesar_condicion(
+                inner,
+                tabla,
+                generador,
+            );
+        }
+
+            Rule::ciclo => {
+            procesar_ciclo(
+                inner,
+                tabla,
+                generador,
+            );
+        }
 
             _ => {}
         }
@@ -404,13 +546,22 @@ programa test;
 vars:
 x: entero;
 y: entero;
-z: flotante;
 
 inicio
 
-x = 5 + 3 * 2;
+x = 0;
+y = 3;
 
-escribe(x);
+mientras (x < y) haz {
+    escribe(x);
+    x = x + 1;
+}
+
+si (x == y) {
+    escribe(x);
+} sino {
+    escribe(y);
+}
 
 fin
 "#;

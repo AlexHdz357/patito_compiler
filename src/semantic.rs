@@ -769,4 +769,67 @@ impl GeneradorCuadruplos {
 
         self.saltos.pop()
     }
+    pub fn generar_gotof(
+    &mut self,
+) -> SemanticResult<usize> {
+
+    let condicion =
+        self.operandos
+            .pop()
+            .unwrap();
+
+    let tipo_condicion =
+        self.tipos
+            .pop()
+            .unwrap();
+
+    if tipo_condicion != Tipo::Bool {
+        return Err(
+            "La condición debe ser booleana".to_string()
+        );
+    }
+
+    let indice =
+        self.cuadruplos.len();
+
+    self.cuadruplos.push(
+        Cuadruplo {
+            operador: Operador::GotoF,
+            izquierda: Some(condicion),
+            derecha: None,
+            resultado: None,
+        }
+    );
+
+    Ok(indice)
+}
+
+    pub fn generar_goto(
+        &mut self,
+        destino: usize,
+    ) -> usize {
+
+        let indice =
+            self.cuadruplos.len();
+
+        self.cuadruplos.push(
+            Cuadruplo {
+                operador: Operador::Goto,
+                izquierda: None,
+                derecha: None,
+                resultado: Some(destino.to_string()),
+            }
+        );
+
+        indice
+    }
+
+    pub fn rellenar_salto(
+        &mut self,
+        indice: usize,
+        destino: usize,
+    ) {
+        self.cuadruplos[indice].resultado =
+            Some(destino.to_string());
+    }
 }

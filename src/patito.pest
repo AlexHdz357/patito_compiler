@@ -121,8 +121,10 @@ condicion = {
     ~ "("
     ~ expresion
     ~ ")"
+    ~ "{"
     ~ cuerpo
-    ~ (sino ~ cuerpo)?
+    ~ "}"
+    ~ (sino ~ "{" ~ cuerpo ~ "}")?
 }
 
 ciclo = {
@@ -131,7 +133,9 @@ ciclo = {
     ~ expresion
     ~ ")"
     ~ haz
+    ~ "{"
     ~ cuerpo
+    ~ "}"
 }
 
 llamada = {
