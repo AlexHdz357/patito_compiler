@@ -538,22 +538,21 @@ fn main() {
 programa test;
 
 vars:
-i: entero;
-n: entero;
-fact: entero;
+x: entero;
+
+entero cuenta(n: entero) {
+    mientras (n > 0) haz {
+        escribe(n);
+        n = n - 1;
+    }
+    return n;
+}
 
 inicio
 
-i = 1;
-n = 5;
-fact = 1;
+x = 3;
 
-mientras (i <= n) haz {
-    fact = fact * i;
-    i = i + 1;
-}
-
-escribe(fact);
+cuenta(x);
 
 fin
 "#;
