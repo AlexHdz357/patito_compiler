@@ -691,6 +691,20 @@ impl GeneradorCuadruplos {
         });
     }
 
+    pub fn generar_gosub_con_retorno(
+        &mut self,
+        nombre_funcion: String,
+        inicio: usize,
+        direccion_retorno: String,
+    ) {
+        self.cuadruplos.push(Cuadruplo {
+            operador: Operador::Gosub,
+            izquierda: Some(nombre_funcion),
+            derecha: Some(direccion_retorno),
+            resultado: Some(inicio.to_string()),
+        });
+    }
+
     pub fn generar_return(&mut self) {
         let valor = self.operandos.pop().unwrap();
 
@@ -728,32 +742,34 @@ pub enum Valor {
 
 pub struct MaquinaVirtual {
     pub cuadruplos: Vec<Cuadruplo>,
-    pub memoria: HashMap<usize, Valor>,
+    pub memoria_global: HashMap<usize, Valor>,
+    pub pila_contextos: Vec<HashMap<usize, Valor>>,
+    pub contexto_pendiente: Option<HashMap<usize, Valor>>,
     pub ip: usize,
-    pub pila_retorno: Vec<usize>,
+    pub pila_retorno: Vec<(usize, Option<usize>)>,
 }
 
 impl MaquinaVirtual {
     pub fn nueva(cuadruplos: Vec<Cuadruplo>, constantes: &TablaConstantes) -> Self {
-        let mut memoria = HashMap::new();
+        let mut memoria_global = HashMap::new();
 
         for constante in constantes.values() {
             let direccion = constante.direccion.unwrap();
 
             let valor = match constante.tipo {
                 Tipo::Entero => Valor::Entero(constante.valor.parse::<i64>().unwrap()),
-
                 Tipo::Flotante => Valor::Flotante(constante.valor.parse::<f64>().unwrap()),
-
                 _ => Valor::Vacio,
             };
 
-            memoria.insert(direccion, valor);
+            memoria_global.insert(direccion, valor);
         }
 
         Self {
             cuadruplos,
-            memoria,
+            memoria_global,
+            pila_contextos: vec![HashMap::new()],
+            contexto_pendiente: None,
             ip: 0,
             pila_retorno: Vec::new(),
         }
@@ -763,27 +779,53 @@ impl MaquinaVirtual {
         valor.as_ref().unwrap().parse::<usize>().unwrap()
     }
 
+    fn es_global_o_constante(direccion: usize) -> bool {
+        (1000..3000).contains(&direccion) || direccion >= 9000
+    }
+
     fn obtener(&self, direccion: usize) -> Valor {
-        self.memoria
-            .get(&direccion)
-            .cloned()
+        if Self::es_global_o_constante(direccion) {
+            return self
+                .memoria_global
+                .get(&direccion)
+                .cloned()
+                .unwrap_or(Valor::Vacio);
+        }
+
+        self.pila_contextos
+            .last()
+            .and_then(|ctx| ctx.get(&direccion).cloned())
             .unwrap_or(Valor::Vacio)
     }
 
     fn guardar(&mut self, direccion: usize, valor: Valor) {
-        self.memoria.insert(direccion, valor);
+        if Self::es_global_o_constante(direccion) {
+            self.memoria_global.insert(direccion, valor);
+            return;
+        }
+
+        if let Some(ctx) = self.pila_contextos.last_mut() {
+            ctx.insert(direccion, valor);
+        }
+    }
+
+    fn guardar_en_pendiente(&mut self, direccion: usize, valor: Valor) {
+        if self.contexto_pendiente.is_none() {
+            self.contexto_pendiente = Some(HashMap::new());
+        }
+
+        self.contexto_pendiente
+            .as_mut()
+            .unwrap()
+            .insert(direccion, valor);
     }
 
     fn sumar(a: Valor, b: Valor) -> Valor {
         match (a, b) {
             (Valor::Entero(x), Valor::Entero(y)) => Valor::Entero(x + y),
-
             (Valor::Entero(x), Valor::Flotante(y)) => Valor::Flotante(x as f64 + y),
-
             (Valor::Flotante(x), Valor::Entero(y)) => Valor::Flotante(x + y as f64),
-
             (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Flotante(x + y),
-
             _ => panic!("Suma inválida"),
         }
     }
@@ -791,13 +833,9 @@ impl MaquinaVirtual {
     fn restar(a: Valor, b: Valor) -> Valor {
         match (a, b) {
             (Valor::Entero(x), Valor::Entero(y)) => Valor::Entero(x - y),
-
             (Valor::Entero(x), Valor::Flotante(y)) => Valor::Flotante(x as f64 - y),
-
             (Valor::Flotante(x), Valor::Entero(y)) => Valor::Flotante(x - y as f64),
-
             (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Flotante(x - y),
-
             _ => panic!("Resta inválida"),
         }
     }
@@ -805,13 +843,9 @@ impl MaquinaVirtual {
     fn multiplicar(a: Valor, b: Valor) -> Valor {
         match (a, b) {
             (Valor::Entero(x), Valor::Entero(y)) => Valor::Entero(x * y),
-
             (Valor::Entero(x), Valor::Flotante(y)) => Valor::Flotante(x as f64 * y),
-
             (Valor::Flotante(x), Valor::Entero(y)) => Valor::Flotante(x * y as f64),
-
             (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Flotante(x * y),
-
             _ => panic!("Multiplicación inválida"),
         }
     }
@@ -819,13 +853,9 @@ impl MaquinaVirtual {
     fn dividir(a: Valor, b: Valor) -> Valor {
         match (a, b) {
             (Valor::Entero(x), Valor::Entero(y)) => Valor::Flotante(x as f64 / y as f64),
-
             (Valor::Entero(x), Valor::Flotante(y)) => Valor::Flotante(x as f64 / y),
-
             (Valor::Flotante(x), Valor::Entero(y)) => Valor::Flotante(x / y as f64),
-
             (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Flotante(x / y),
-
             _ => panic!("División inválida"),
         }
     }
@@ -833,30 +863,23 @@ impl MaquinaVirtual {
     fn comparar_menor(a: Valor, b: Valor) -> Valor {
         match (a, b) {
             (Valor::Entero(x), Valor::Entero(y)) => Valor::Bool(x < y),
-
             (Valor::Entero(x), Valor::Flotante(y)) => Valor::Bool((x as f64) < y),
-
             (Valor::Flotante(x), Valor::Entero(y)) => Valor::Bool(x < y as f64),
-
             (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Bool(x < y),
-
-            _ => panic!("Comparación inválida"),
+            _ => panic!("Comparación < inválida"),
         }
     }
 
     fn comparar_mayor(a: Valor, b: Valor) -> Valor {
         match (a, b) {
             (Valor::Entero(x), Valor::Entero(y)) => Valor::Bool(x > y),
-
             (Valor::Entero(x), Valor::Flotante(y)) => Valor::Bool((x as f64) > y),
-
             (Valor::Flotante(x), Valor::Entero(y)) => Valor::Bool(x > y as f64),
-
             (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Bool(x > y),
-
-            _ => panic!("Comparación inválida"),
+            _ => panic!("Comparación > inválida"),
         }
     }
+
     fn comparar_menor_igual(a: Valor, b: Valor) -> Valor {
         match (a, b) {
             (Valor::Entero(x), Valor::Entero(y)) => Valor::Bool(x <= y),
@@ -877,23 +900,19 @@ impl MaquinaVirtual {
         }
     }
 
-    fn comparar_diferente(a: Valor, b: Valor) -> Valor {
-        match (a, b) {
-            (Valor::Entero(x), Valor::Entero(y)) => Valor::Bool(x != y),
-            (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Bool(x != y),
-            (Valor::Bool(x), Valor::Bool(y)) => Valor::Bool(x != y),
-            _ => Valor::Bool(true),
-        }
-    }
     fn comparar_igual(a: Valor, b: Valor) -> Valor {
         match (a, b) {
             (Valor::Entero(x), Valor::Entero(y)) => Valor::Bool(x == y),
-
             (Valor::Flotante(x), Valor::Flotante(y)) => Valor::Bool(x == y),
-
             (Valor::Bool(x), Valor::Bool(y)) => Valor::Bool(x == y),
-
             _ => Valor::Bool(false),
+        }
+    }
+
+    fn comparar_diferente(a: Valor, b: Valor) -> Valor {
+        match Self::comparar_igual(a, b) {
+            Valor::Bool(v) => Valor::Bool(!v),
+            _ => unreachable!(),
         }
     }
 
@@ -904,13 +923,9 @@ impl MaquinaVirtual {
             match cuad.operador {
                 Operador::Asignacion => {
                     let origen = Self::direccion(&cuad.izquierda);
-
                     let destino = Self::direccion(&cuad.resultado);
-
                     let valor = self.obtener(origen);
-
                     self.guardar(destino, valor);
-
                     self.ip += 1;
                 }
 
@@ -925,13 +940,10 @@ impl MaquinaVirtual {
                 | Operador::IgualIgual
                 | Operador::Diferente => {
                     let izq = Self::direccion(&cuad.izquierda);
-
                     let der = Self::direccion(&cuad.derecha);
-
                     let res = Self::direccion(&cuad.resultado);
 
                     let a = self.obtener(izq);
-
                     let b = self.obtener(der);
 
                     let resultado = match cuad.operador {
@@ -949,17 +961,13 @@ impl MaquinaVirtual {
                     };
 
                     self.guardar(res, resultado);
-
                     self.ip += 1;
                 }
 
                 Operador::Print => {
                     let direccion = Self::direccion(&cuad.resultado);
-
                     let valor = self.obtener(direccion);
-
                     println!("OUTPUT: {:?}", valor);
-
                     self.ip += 1;
                 }
 
@@ -969,59 +977,67 @@ impl MaquinaVirtual {
 
                 Operador::GotoF => {
                     let direccion_condicion = Self::direccion(&cuad.izquierda);
-
                     let condicion = self.obtener(direccion_condicion);
 
                     match condicion {
                         Valor::Bool(false) => {
                             self.ip = cuad.resultado.unwrap().parse::<usize>().unwrap();
                         }
-
                         Valor::Bool(true) => {
                             self.ip += 1;
                         }
-
-                        _ => {
-                            panic!("GOTOF esperaba un valor booleano");
-                        }
+                        _ => panic!("GOTOF esperaba un valor booleano"),
                     }
                 }
 
                 Operador::Era => {
+                    self.contexto_pendiente = Some(HashMap::new());
                     self.ip += 1;
                 }
 
                 Operador::Param => {
                     let origen = Self::direccion(&cuad.izquierda);
-
                     let destino = Self::direccion(&cuad.resultado);
-
                     let valor = self.obtener(origen);
-
-                    self.guardar(destino, valor);
-
+                    self.guardar_en_pendiente(destino, valor);
                     self.ip += 1;
                 }
 
                 Operador::Gosub => {
                     let destino = cuad.resultado.unwrap().parse::<usize>().unwrap();
+                    let retorno_destino = cuad.derecha.map(|d| d.parse::<usize>().unwrap());
+                    let nuevo_contexto = self.contexto_pendiente.take().unwrap_or_default();
 
-                    self.pila_retorno.push(self.ip + 1);
-
+                    self.pila_retorno.push((self.ip + 1, retorno_destino));
+                    self.pila_contextos.push(nuevo_contexto);
                     self.ip = destino;
                 }
 
                 Operador::Return => {
-                    if let Some(retorno) = self.pila_retorno.pop() {
-                        self.ip = retorno;
+                    let direccion_retorno = Self::direccion(&cuad.izquierda);
+                    let valor_retorno = self.obtener(direccion_retorno);
+
+                    if self.pila_contextos.len() > 1 {
+                        self.pila_contextos.pop();
+                    }
+
+                    if let Some((retorno_ip, destino_retorno)) = self.pila_retorno.pop() {
+                        if let Some(destino) = destino_retorno {
+                            self.guardar(destino, valor_retorno);
+                        }
+                        self.ip = retorno_ip;
                     } else {
                         self.ip += 1;
                     }
                 }
 
                 Operador::EndFunc => {
-                    if let Some(retorno) = self.pila_retorno.pop() {
-                        self.ip = retorno;
+                    if self.pila_contextos.len() > 1 {
+                        self.pila_contextos.pop();
+                    }
+
+                    if let Some((retorno_ip, _)) = self.pila_retorno.pop() {
+                        self.ip = retorno_ip;
                     } else {
                         self.ip += 1;
                     }

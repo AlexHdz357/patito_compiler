@@ -92,11 +92,15 @@ func = {
     ~ "}"
 }
 
-llamada = {
+llamada_expr = {
     id
     ~ "("
     ~ argumentos
     ~ ")"
+}
+
+llamada = {
+    llamada_expr
     ~ ";"
 }
 
@@ -196,7 +200,8 @@ termino = {
 }
 
 factor = {
-      "(" ~ expresion ~ ")"
+      llamada_expr
+    | "(" ~ expresion ~ ")"
     | id
     | cte
 }
